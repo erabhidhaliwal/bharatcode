@@ -1,29 +1,18 @@
-# src/bharatcode/brain/glm.py
-
 import os
-import requests
+from zhipuai import ZhipuAI
 
 def glm_chat(messages):
     api_key = os.getenv("ZHIPU_API_KEY")
-    url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    client = ZhipuAI(api_key=api_key)
     
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "model": "GLM-4.7-Flash",
-        "messages": messages
-    }
-
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=30)
-        res_json = res.json()
-        if "choices" not in res_json:
-            print(f"❌ API Error: {res_json}")
-            return f"Error: {res_json.get('error', 'Unknown API error')}"
-        return res_json["choices"][0]["message"]["content"]
+        # Using the official SDK for better stability and automatic retries.
+        response = client.chat.completions.create(
+            model="GLM-4.7-Flash",
+            messages=messages,
+            timeout=120, # Higher timeout for stability
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        print(f"❌ Connection Error: {e}")
+        print(f"❌ ZhipuAI SDK Error: {e}")
         return f"Error: {str(e)}"
