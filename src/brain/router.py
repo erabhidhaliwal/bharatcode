@@ -71,9 +71,15 @@ def zhipu_chat(messages, model="glm-4-flash"):
     }
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
+        print(f"[DEBUG] Status: {response.status_code}")
+        print(f"[DEBUG] Response: {response.text[:500]}")
+
         if response.status_code != 200:
-            error_msg = response.json()
-            return f"Error: {response.status_code} - {error_msg}"
+            try:
+                error_msg = response.json()
+                return f"Error: {response.status_code} - {error_msg}"
+            except:
+                return f"Error: {response.status_code} - {response.text}"
         result = response.json()
         return result["choices"][0]["message"]["content"]
     except Exception as e:
@@ -121,6 +127,9 @@ def minimax_chat(messages, model="MiniMax-M2.1"):
     }
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
+        print(f"[DEBUG] Status: {response.status_code}")
+        print(f"[DEBUG] Response: {response.text[:500]}")
+
         if response.status_code != 200:
             try:
                 error_msg = response.json()
