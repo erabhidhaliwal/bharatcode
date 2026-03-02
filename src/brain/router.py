@@ -128,12 +128,12 @@ def route_chat(messages, model=None):
             elif provider == "openrouter":
                 api_key = os.getenv("OPENROUTER_API_KEY")
                 if not api_key:
-                    return "Error: OPENROUTER_API_KEY not set"
+                    return "Error: OPENROUTER_API_KEY not set\n\nGet free key: https://openrouter.ai/settings/keys"
                 return openrouter_chat(messages, model=model_name, api_key=api_key)
             elif provider == "siliconflow":
                 api_key = os.getenv("SILICONFLOW_API_KEY")
                 if not api_key:
-                    return "Error: SILICONFLOW_API_KEY not set"
+                    return "Error: SILICONFLOW_API_KEY not set\n\nGet free key: https://siliconflow.cn/"
                 return siliconflow_chat(
                     messages,
                     model=model_name,
@@ -145,6 +145,9 @@ def route_chat(messages, model=None):
             elif provider == "moonshot":
                 return moonshot_chat(messages, model=model_name)
             elif provider == "minimax":
+                api_key = os.getenv("MINIMAX_API_KEY")
+                if not api_key:
+                    return "Error: MINIMAX_API_KEY not set\n\nGet free key: https://platform.minimax.ai/\n\nThen run: /set MINIMAX_API_KEY=your-key-here"
                 return minimax_chat(messages, model=model_name)
 
     engine = os.getenv("LLM_ENGINE", "ollama").lower()
