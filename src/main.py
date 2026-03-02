@@ -27,6 +27,66 @@ INTENT_KEYWORDS = {
     "review": ["review", "check", "verify", "validate", "audit"],
 }
 
+ONBOARDING_TIPS = [
+    "💡 Tip: Type /help to see all commands",
+    "💡 Tip: Use /set ollama:modelname to switch models",
+    "💡 Tip: Ollama must be running: run 'ollama serve' in another terminal",
+    "💡 Tip: Install models: run 'ollama pull modelname' in another terminal",
+    "💡 Tip: /models shows available models you can use",
+    "💡 Tip: /mode lets you choose between Plan/Execute/Review/Auto modes",
+]
+
+ERROR_HELP = {
+    "not found": "🔧 The model is not installed. Run 'ollama pull <model-name>' in a separate terminal, then restart BharatCode.",
+    "ollama serve": "🔧 Ollama is not running. Open a new terminal and run: ollama serve",
+    "invalid api key": "🔧 Your API key is invalid. Get a new key from the provider's website.",
+    "api key not set": "🔧 API key not found. Add it to the .env file or use Ollama (free, no key needed).",
+    "connection": "🔧 Cannot connect. Make sure Ollama is running: 'ollama serve'",
+    "timeout": "⏱️ Request timed out. Try again or use a smaller model.",
+}
+
+GUIDE_MESSAGES = {
+    "ollama": """
+🤖 [bold]Using Ollama (Local Models)[/bold]
+
+Ollama runs models locally on your computer - 100% free, no API keys needed!
+
+[green]✓[/green] Advantages:
+  • Free forever
+  • No internet needed
+  • Your data stays private
+
+[yellow]![/yellow] To use:
+  1. Make sure Ollama is installed
+  2. Run [cyan]ollama serve[/cyan] in a separate terminal
+  3. Install models: [cyan]ollama pull <model-name>[/cyan]
+  4. Use in BharatCode: /set ollama:starcoder2
+
+[bold]Popular Models:[/bold]
+  • starcoder2 - Great for code
+  • llama3.2 - General purpose
+  • deepseek-coder-v2 - Coding focused
+""",
+    "first_time": """
+👋 [bold]Welcome to BharatCode![/bold]
+
+I'm your coding assistant. Here's how to get started:
+
+[bold]Quick Start:[/bold]
+  1. Type any coding question or task
+  2. I'll help you write, debug, or explain code
+
+[bold]Commands:[/bold]
+  • /help - Show all commands
+  • /models - See available models  
+  • /set ollama:starcoder2 - Switch to local model
+  • /mode - Choose workflow mode
+
+[bold]Need Help?[/bold]
+  Just ask! I'll guide you through any issues.
+""",
+}
+
 BANNER = """
 [bold yellow]BBBBBBBBBBBBBBBBBB   HHHHHHHHH     HHHHHHHHH               AAA               RRRRRRRRRRRRRRRRR                  AAA         TTTTTTTTTTTTTTTTTTTTTTT[/]
 [bold yellow]B::::::::::::::::B  H:::::::H     H:::::::H              A:::A              R::::::::::::::::R                A:::A        T:::::::::::::::::::::T[/]
@@ -91,23 +151,69 @@ class BharatCodeTUI:
         console.print(
             f"\n[dim]Model:[/dim] {self.current_model}  [dim]Mode:[/dim] {self.mode.upper()}\n"
         )
+        console.print(GUIDE_MESSAGES["first_time"])
+
+    def show_guide(self, topic=None):
+        if topic and topic in GUIDE_MESSAGES:
+            console.print(Panel(GUIDE_MESSAGES[topic], border_style="cyan"))
+        else:
+            console.print(Panel(GUIDE_MESSAGES["ollama"], border_style="cyan"))
+
+    def handle_error(self, error_msg):
+        error_lower = error_msg.lower()
+
+        for key, help_msg in ERROR_HELP.items():
+            if key in error_lower:
+                console.print(
+                    Panel(help_msg, title="🔧 Need Help?", border_style="yellow")
+                )
+                return
+
+        if "model" in error_lower and "not found" in error_lower:
+            console.print(
+                Panel(
+                    "The model you're trying to use is not installed.\n\n"
+                    "Options:\n"
+                    "1. Install it: [cyan]ollama pull <model-name>[/cyan] (in separate terminal)\n"
+                    "2. Use a different model: [cyan]/set ollama:starcoder2[/cyan]\n"
+                    "3. List installed models: [cyan]ollama list[/cyan]",
+                    title="🔧 Model Not Found",
+                    border_style="yellow",
+                )
+            )
+            return
+
+        console.print(
+            Panel(
+                "Something went wrong. Here's what might help:\n\n"
+                "• Make sure Ollama is running: [cyan]ollama serve[/cyan]\n"
+                "• Check model is installed: [cyan]ollama list[/cyan]\n"
+                "• Type /help for general help\n"
+                "• Type /guide for setup guide",
+                title="❌ Error",
+                border_style="red",
+            )
+        )
 
     def print_help(self):
         console.print("\n[bold]Commands:[/bold]")
-        console.print("  [cyan]/models[/cyan]   - List available models")
+        console.print("  [cyan]/guide[/cyan]   - Setup guide & help")
+        console.print("  [cyan]/models[/cyan]  - List available models")
         console.print(
-            "  [cyan]/set[/cyan]     - Set model (e.g., /set ollama:llama3.2)"
+            "  [cyan]/set[/cyan]     - Set model (e.g., /set ollama:starcoder2)"
         )
         console.print("  [cyan]/mode[/cyan]    - Choose workflow mode")
         console.print("  [cyan]/clear[/cyan]   - Clear chat history")
         console.print("  [cyan]/history[/cyan] - Show conversation history")
-        console.print("  [cyan]/help[/cyan]    - Show this help")
-        console.print("  [cyan]exit[/cyan]     - Exit\n")
+        console.print("  [cyan]/help[/cyan]   - Show this help")
+        console.print("  [cyan]exit[/cyan]    - Exit\n")
 
+        console.print("\n[bold]Quick Tips:[/bold]")
+        console.print("  • Ollama must be running: [cyan]ollama serve[/cyan]")
         console.print(
-            "[bold]Default:[/bold] OpenRouter with MiniMax-M2.5 (Free $1 credit on signup)"
+            "  • Install models in separate terminal: [cyan]ollama pull <name>[/cyan]"
         )
-        console.print("[bold]Local:[/bold] Ollama models (No API key needed)\n")
+        console.print("  • /guide - Full setup guide\n")
 
         console.print("\n[bold]Intent Detection:[/bold]")
         console.print("  🔨 generate - create, write, make, build")
@@ -254,6 +360,8 @@ class BharatCodeTUI:
                 elif cmd == "/clear":
                     self.conversation = []
                     self.print_banner()
+                elif cmd == "/guide":
+                    self.show_guide()
                 elif cmd == "/history":
                     console.print("\n[bold]Conversation History:[/bold]")
                     for i, (role, msg) in enumerate(self.conversation):
@@ -277,6 +385,8 @@ class BharatCodeTUI:
                 console.print(
                     Panel(result, border_style="red", width=min(console.width, 100))
                 )
+                if result:
+                    self.handle_error(result)
             console.print()
 
 
