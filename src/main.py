@@ -15,17 +15,13 @@ from orchestrator import Orchestrator
 console = Console()
 
 BANNER = """
-[bold yellow on black]BBBB   H   H  AAA   RRRR   AAAAA  TTTTT[/]
-[bold yellow on black]B   B  H   H A   A R   R A     A   T[/]
-[bold yellow on black]BBBB   HHHHH AAAAA RRRR  AAAAAAA   T[/]
-[bold yellow on black]B   B  H   H A   A R  R  A     A   T[/]
-[bold yellow on black]BBBB   H   H A   A R   R A     A   T[/]
-
-[bold cyan on black]CCCC  OOO  DDD  EEEE[/]
-[bold cyan on black]C    O   O D  D E[/]
-[bold cyan on black]C    O   O D   D EE[/]
-[bold cyan on black]C    O   O D  D E[/]
-[bold cyan on black]CCCC  OOO  DDD  EEEE[/]
+[bold yellow]░████████   ░██     ░██    ░███    ░█████████     ░███    ░██████████     ░██████    ░██████   ░███████   ░██████████[/]
+[bold yellow]░██    ░██  ░██     ░██   ░██░██   ░██     ░██   ░██░██       ░██        ░██   ░██  ░██   ░██  ░██   ░██  ░██        [/]
+[bold yellow]░██    ░██  ░██     ░██  ░██  ░██  ░██     ░██  ░██  ░██      ░██       ░██        ░██     ░██ ░██    ░██ ░██        [/]
+[bold yellow]░████████   ░██████████ ░█████████ ░█████████  ░█████████     ░██       ░██        ░██     ░██ ░██    ░██ ░█████████ [/]
+[bold yellow]░██     ░██ ░██     ░██ ░██    ░██ ░██   ░██   ░██    ░██     ░██       ░██        ░██     ░██ ░██    ░██ ░██        [/]
+[bold yellow]░██     ░██ ░██     ░██ ░██    ░██ ░██    ░██  ░██    ░██     ░██        ░██   ░██  ░██   ░██  ░██   ░██  ░██        [/]
+[bold yellow]░█████████  ░██     ░██ ░██    ░██ ░██     ░██ ░██    ░██     ░██         ░██████    ░██████   ░███████   ░██████████[/]
 """
 
 MODES = {
