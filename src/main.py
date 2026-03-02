@@ -1,5 +1,7 @@
 import os
 import sys
+import subprocess
+import time
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -9,10 +11,21 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
 from rich.style import Style
+from rich.syntax import Syntax
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from brain.models import get_available_models, FREE_CODING_MODELS
 from orchestrator import Orchestrator
 
 console = Console()
+
+INTENT_KEYWORDS = {
+    "generate": ["create", "write", "make", "generate", "build", "add", "new"],
+    "run": ["run", "execute", "start", "launch", "test"],
+    "debug": ["debug", "fix", "error", "bug", "issue", "problem"],
+    "refactor": ["refactor", "improve", "optimize", "clean", "simplify"],
+    "explain": ["explain", "what", "how", "why", "describe", "understand"],
+    "review": ["review", "check", "verify", "validate", "audit"],
+}
 
 BANNER = """
 [bold yellow]▗▄▄▖ ▗▖ ▗▖ ▗▄▖ ▗▄▄▖  ▗▄▖▗▄▄▄▖     ▗▄▄▖ ▗▄▖ ▗▄▄▄  ▗▄▄▄▖[/]
@@ -52,12 +65,24 @@ class BharatCodeTUI:
 
     def print_help(self):
         console.print("\n[bold]Commands:[/bold]")
-        console.print("  [cyan]/models[/cyan]  - List available free models")
-        console.print("  [cyan]/set[/cyan]     - Set default model")
-        console.print("  [cyan]/mode[/cyan]    - Choose workflow mode")
-        console.print("  [cyan]/clear[/cyan]   - Clear chat")
+        console.print("  [cyan]/models[/cyan]   - List available free models")
+        console.print(
+            "  [cyan]/set[/cyan]     - Set default model (e.g., /set minimax:MiniMax-M2.1)"
+        )
+        console.print(
+            "  [cyan]/mode[/cyan]    - Choose workflow mode (Plan/Execute/Review/Auto)"
+        )
+        console.print("  [cyan]/clear[/cyan]   - Clear chat history")
+        console.print("  [cyan]/history[/cyan] - Show conversation history")
         console.print("  [cyan]/help[/cyan]    - Show this help")
         console.print("  [cyan]exit[/cyan]     - Exit\n")
+
+        console.print("\n[bold]Intent Detection:[/bold]")
+        console.print("  🔨 generate - create, write, make, build")
+        console.print("  ▶️  run      - run, execute, test")
+        console.print("  🐛 debug    - fix, error, bug, issue")
+        console.print("  ♻️  refactor - improve, optimize, clean")
+        console.print("  📖 explain  - explain, what, how, why\n")
 
     def print_models(self):
         console.print("\n[bold]Available Free Models:[/bold]\n")
@@ -87,18 +112,59 @@ class BharatCodeTUI:
             console.print("[red]Invalid choice, using Auto mode[/red]")
             self.mode = "auto"
 
+    def detect_intent(self, user_input):
+        user_input_lower = user_input.lower()
+        for intent, keywords in INTENT_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in user_input_lower:
+                    return intent
+        return "generate"
+
+    def format_code_output(self, result):
+        if "```" in result:
+            parts = result.split("```")
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    code = part.split("\n", 1)
+                    if len(code) > 1:
+                        lang, code_block = code[0].strip(), code[1].rstrip("```")
+                        syntax = Syntax(
+                            code_block, lang, theme="monokai", line_numbers=True
+                        )
+                        console.print(syntax)
+                    else:
+                        console.print(part)
+                else:
+                    if part.strip():
+                        console.print(part)
+        else:
+            console.print(result)
+
     def process_message(self, user_input):
+        intent = self.detect_intent(user_input)
+
+        intent_icons = {
+            "generate": "🔨",
+            "run": "▶️",
+            "debug": "🐛",
+            "refactor": "♻️",
+            "explain": "📖",
+            "review": "👀",
+        }
+
+        icon = intent_icons.get(intent, "🤖")
+
         if self.mode == "plan":
-            console.print("\n[bold cyan]🧠 Planning...[/bold cyan]")
+            console.print(f"\n{icon} [bold cyan]Planning...[/bold cyan]")
             result = self.orch.planner(user_input)
         elif self.mode == "execute":
-            console.print("\n[bold cyan]⚙️  Executing...[/bold cyan]")
+            console.print(f"\n{icon} [bold cyan]Executing...[/bold cyan]")
             result = self.orch.executor(user_input)
         elif self.mode == "review":
-            console.print("\n[bold cyan]🧐 Reviewing...[/bold cyan]")
+            console.print(f"\n{icon} [bold cyan]Reviewing...[/bold cyan]")
             result = self.orch.reviewer(user_input)
         else:
-            console.print("\n[bold cyan]🚀 Running Auto Mode...[/bold cyan]")
+            console.print(f"\n{icon} [bold cyan]Auto Mode ({intent})...[/bold cyan]")
             result = self.orch.run(user_input)
         return result
 
@@ -142,6 +208,12 @@ class BharatCodeTUI:
                 elif cmd == "/clear":
                     self.conversation = []
                     self.print_banner()
+                elif cmd == "/history":
+                    console.print("\n[bold]Conversation History:[/bold]")
+                    for i, (role, msg) in enumerate(self.conversation):
+                        role_icon = "👤" if role == "user" else "🤖"
+                        console.print(f"{role_icon} {role.upper()}: {msg[:100]}...")
+                    console.print()
                 elif cmd in ["/help", "/h"]:
                     self.print_help()
                 else:

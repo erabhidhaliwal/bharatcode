@@ -5,7 +5,13 @@ from brain.models import get_model_by_id, FREE_CODING_MODELS
 from brain.ollama import ollama_chat
 
 
-def openrouter_chat(messages, model, api_key):
+def stream_response(response_text):
+    """Generator to stream response character by character for better UX"""
+    for char in response_text:
+        yield char
+
+
+def openrouter_chat(messages, model, api_key, stream=False):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -15,6 +21,8 @@ def openrouter_chat(messages, model, api_key):
         "model": model,
         "messages": messages,
     }
+    if stream:
+        data["stream"] = True
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
@@ -25,7 +33,7 @@ def openrouter_chat(messages, model, api_key):
 
 
 def siliconflow_chat(
-    messages, model, api_key, base_url="https://api.siliconflow.cn/v1"
+    messages, model, api_key, base_url="https://api.siliconflow.cn/v1", stream=False
 ):
     url = f"{base_url}/chat/completions"
     headers = {
@@ -36,6 +44,8 @@ def siliconflow_chat(
         "model": model,
         "messages": messages,
     }
+    if stream:
+        data["stream"] = True
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
@@ -73,7 +83,7 @@ def zhipu_chat(messages, model="glm-4-flash"):
 def moonshot_chat(messages, model="kimi-k2.5"):
     api_key = os.getenv("MOONSHOT_API_KEY")
     if not api_key:
-        return "Error: MOONSHOT_API_KEY not set"
+        return "Error: MOONSHOT_API_KEY not set\n\nGet free key: https://platform.moonshot.cn/"
 
     url = "https://api.moonshot.cn/v1/chat/completions"
     headers = {
@@ -86,7 +96,9 @@ def moonshot_chat(messages, model="kimi-k2.5"):
     }
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
+        if response.status_code != 200:
+            error_msg = response.json()
+            return f"Error: {response.status_code} - {error_msg}"
         result = response.json()
         return result["choices"][0]["message"]["content"]
     except Exception as e:
