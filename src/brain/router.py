@@ -96,7 +96,7 @@ def moonshot_chat(messages, model="kimi-k2.5"):
 def minimax_chat(messages, model="MiniMax-M2.1"):
     api_key = os.getenv("MINIMAX_API_KEY")
     if not api_key:
-        return "Error: MINIMAX_API_KEY not set"
+        return "Error: MINIMAX_API_KEY not set\n\nGet free key: https://platform.minimax.ai/"
 
     url = "https://api.minimax.chat/v1/text/chatcompletion_v2"
     headers = {
@@ -109,7 +109,9 @@ def minimax_chat(messages, model="MiniMax-M2.1"):
     }
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
+        if response.status_code != 200:
+            error_msg = response.json()
+            return f"Error: {response.status_code} - {error_msg}"
         result = response.json()
         return result["choices"][0]["message"]["content"]
     except Exception as e:
@@ -159,6 +161,8 @@ def route_chat(messages, model=None):
         return ollama_chat(messages, model=selected_model)
     elif engine == "zhipu":
         return zhipu_chat(messages)
+    elif engine == "minimax":
+        return minimax_chat(messages)
     else:
         return glm_chat(messages)
 
