@@ -10,9 +10,12 @@ def glm_chat(messages):
         response = client.chat.completions.create(
             model="GLM-4.7-Flash",
             messages=messages,
-            timeout=120, # Higher timeout for stability
+            timeout=60, 
         )
         return response.choices[0].message.content
     except Exception as e:
+        if "429" in str(e) or "1302" in str(e):
+            print("⚠️  ZhipuAI Rate Limit reached. Please wait a moment or switch to Ollama.")
+            return "Error: ZhipuAI Rate Limit reached."
         print(f"❌ ZhipuAI SDK Error: {e}")
         return f"Error: {str(e)}"
