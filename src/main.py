@@ -164,7 +164,7 @@ def main():
 
     from typing import Optional
 
-    @app.command()
+    @app.command(name="run")
     def run(
         message: Optional[str] = typer.Option(
             None, "--message", "-m", help="Initial message"
@@ -174,7 +174,7 @@ def main():
         tui = BharatCodeTUI()
         tui.run(message)
 
-    @app.command()
+    @app.command(name="models")
     def models():
         """List available models"""
         console.print("\n[bold]Available Free Models:[/bold]\n")
@@ -183,6 +183,9 @@ def main():
             for model in info["models"]:
                 console.print(f"  • {model}")
             console.print()
+
+    if len(sys.argv) == 1:
+        sys.argv.append("run")
 
     app()
 
