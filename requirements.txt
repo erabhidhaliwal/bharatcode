@@ -3,3 +3,4 @@ python-dotenv
 requests
 rich
 watchdog
+typer>=0.9.0
