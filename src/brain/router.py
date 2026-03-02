@@ -122,10 +122,21 @@ def minimax_chat(messages, model="MiniMax-M2.1"):
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
         if response.status_code != 200:
-            error_msg = response.json()
-            return f"Error: {response.status_code} - {error_msg}"
+            try:
+                error_msg = response.json()
+                return f"Error: {response.status_code} - {error_msg}"
+            except:
+                return f"Error: {response.status_code} - {response.text}"
         result = response.json()
-        return result["choices"][0]["message"]["content"]
+
+        if "choices" in result and len(result["choices"]) > 0:
+            return result["choices"][0]["message"]["content"]
+        elif "completion_message" in result:
+            return result["completion_message"]["content"]
+        elif "text" in result:
+            return result["text"]
+        else:
+            return f"Error: Unexpected response format: {result}"
     except Exception as e:
         return f"Error: {str(e)}"
 
