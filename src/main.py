@@ -94,17 +94,20 @@ class BharatCodeTUI:
 
     def print_help(self):
         console.print("\n[bold]Commands:[/bold]")
-        console.print("  [cyan]/models[/cyan]   - List available free models")
+        console.print("  [cyan]/models[/cyan]   - List available models")
         console.print(
-            "  [cyan]/set[/cyan]     - Set default model (e.g., /set minimax:MiniMax-M2.1)"
+            "  [cyan]/set[/cyan]     - Set model (e.g., /set ollama:llama3.2)"
         )
-        console.print(
-            "  [cyan]/mode[/cyan]    - Choose workflow mode (Plan/Execute/Review/Auto)"
-        )
+        console.print("  [cyan]/mode[/cyan]    - Choose workflow mode")
         console.print("  [cyan]/clear[/cyan]   - Clear chat history")
         console.print("  [cyan]/history[/cyan] - Show conversation history")
         console.print("  [cyan]/help[/cyan]    - Show this help")
         console.print("  [cyan]exit[/cyan]     - Exit\n")
+
+        console.print(
+            "[bold]Default:[/bold] OpenRouter with MiniMax-M2.5 (Free $1 credit on signup)"
+        )
+        console.print("[bold]Local:[/bold] Ollama models (No API key needed)\n")
 
         console.print("\n[bold]Intent Detection:[/bold]")
         console.print("  🔨 generate - create, write, make, build")
@@ -134,10 +137,17 @@ class BharatCodeTUI:
                 console.print()
 
         console.print(
-            "\n[dim]To use Ollama models, make sure 'ollama serve' is running locally[/dim]\n"
+            "\n[dim]To use Ollama: run 'ollama serve' locally (free, no key)[/dim]"
+        )
+        console.print(
+            "[dim]To use OpenRouter: Get free key from https://openrouter.ai/settings/keys ($1 free credit)[/dim]\n"
         )
 
     def set_model(self, model_id):
+        if model_id.startswith("openrouter:"):
+            console.print("[yellow]Note:[/yellow] OpenRouter requires API key.")
+            console.print("Get free key: https://openrouter.ai/settings/keys")
+            console.print("Then add to .env: OPENROUTER_API_KEY=your-key\n")
         os.environ["DEFAULT_MODEL"] = model_id
         self.current_model = model_id
         console.print(f"[green]✓[/green] Model set to: [bold]{model_id}[/bold]")

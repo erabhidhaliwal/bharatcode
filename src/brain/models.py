@@ -27,20 +27,14 @@ FREE_CODING_MODELS = {
         "provider": "openrouter",
         "api_key_env": "OPENROUTER_API_KEY",
         "api_key_required": True,
-        "free_models": [
-            "deepseek/deepseek-coder",
-            "qwen/qwen-coder-turbo",
-            "google/gemma-2-27b",
-            "microsoft/phi-4",
-        ],
+        "free_credits": True,
         "models": [
             "deepseek/deepseek-coder",
             "qwen/qwen-coder-turbo",
-            "meta-llama/codellama-70b",
             "google/gemma-2-27b",
-            "anthropic/claude-3.5-sonnet",
-            "openai/gpt-4o-mini",
             "microsoft/phi-4",
+            "minimax/MiniMax-M2.5",
+            "minimax/MiniMax-M2.1",
         ],
     },
     "siliconflow": {
@@ -53,18 +47,6 @@ FREE_CODING_MODELS = {
             "Qwen/Qwen2.5-Coder-32B-Instruct",
             "THUDM/GLM-4-Flash",
             "01-ai/Yi-34B-Coder",
-            "meta-llama/Llama-3.3-70B-Instruct",
-            "microsoft/WizardCoder-Python-34B-V1.0",
-        ],
-    },
-    "zhipu": {
-        "provider": "zhipu",
-        "api_key_env": "ZHIPU_API_KEY",
-        "api_key_required": True,
-        "models": [
-            "glm-4-flash",
-            "glm-4",
-            "glm-4-plus",
         ],
     },
 }
