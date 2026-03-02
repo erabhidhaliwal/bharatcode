@@ -117,7 +117,8 @@ class BharatCodeTUI:
         console.print("  📖 explain  - explain, what, how, why\n")
 
     def print_models(self):
-        console.print("\n[bold]=== FREE Models (No API Key Required) ===[/bold]\n")
+        console.print("\n[bold]=== Available Ollama Models (No API Key) ===[/bold]\n")
+        console.print("[dim]Run 'ollama list' to see installed models[/dim]\n")
 
         from brain.models import FREE_CODING_MODELS
 
@@ -128,20 +129,10 @@ class BharatCodeTUI:
                     console.print(f"  • {model}")
                 console.print()
 
-        console.print("\n[bold]=== Models (Require API Key) ===[/bold]\n")
-        for provider, info in FREE_CODING_MODELS.items():
-            if info.get("api_key_required", False):
-                console.print(f"[bold yellow]⚠ {provider.upper()}:[/bold yellow]")
-                for model in info["models"]:
-                    console.print(f"  • {model}")
-                console.print()
-
         console.print(
-            "\n[dim]To use Ollama: run 'ollama serve' locally (free, no key)[/dim]"
+            "\n[dim]Install more:[/dim] [cyan]ollama pull <model-name>[/cyan]"
         )
-        console.print(
-            "[dim]To use OpenRouter: Get free key from https://openrouter.ai/settings/keys ($1 free credit)[/dim]\n"
-        )
+        console.print("[dim]Start Ollama:[/dim] [cyan]ollama serve[/cyan]\n")
 
     def set_model(self, model_id):
         if model_id.startswith("openrouter:"):
