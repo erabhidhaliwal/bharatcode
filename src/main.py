@@ -28,10 +28,39 @@ INTENT_KEYWORDS = {
 }
 
 BANNER = """
-[bold yellow]▗▄▄▖ ▗▖ ▗▖ ▗▄▖ ▗▄▄▖  ▗▄▖▗▄▄▄▖     ▗▄▄▖ ▗▄▖ ▗▄▄▄  ▗▄▄▄▖[/]
-[bold yellow]▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌ █      ▐▌   ▐▌ ▐▌▐▌  █ ▐▌   [/]
-[bold yellow]▐▛▀▚▖▐▛▀▜▌▐▛▀▜▌▐▛▀▚▖▐▛▀▜▌ █      ▐▌   ▐▌ ▐▌▐▌  █ ▐▛▀▀▘[/]
-[bold yellow]▐▙▄▞▘▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌ █      ▝▚▄▄▖▝▚▄▞▘▐▙▄▄▀ ▐▙▄▄▖[/]
+[bold yellow]BBBBBBBBBBBBBBBBBB   HHHHHHHHH     HHHHHHHHH               AAA               RRRRRRRRRRRRRRRRR                  AAA         TTTTTTTTTTTTTTTTTTTTTTT[/]
+[bold yellow]B::::::::::::::::B  H:::::::H     H:::::::H              A:::A              R::::::::::::::::R                A:::A        T:::::::::::::::::::::T[/]
+[bold yellow]B::::::BBBBBB:::::B H:::::::H     H:::::::H             A:::::A             R::::::RRRRRR:::::R              A:::::A       T:::::::::::::::::::::T[/]
+[bold yellow]BB:::::B     B:::::BHH::::::H     H::::::HH            A:::::::A            RR:::::R     R:::::R            A:::::::A      T:::::TT:::::::TT:::::T[/]
+[bold yellow]  B::::B     B:::::B  H:::::H     H:::::H             A:::::::::A             R::::R     R:::::R           A:::::::::A     TTTTTT  T:::::T  TTTTTT[/]
+[bold yellow]  B::::B     B:::::B  H:::::H     H:::::H            A:::::A:::::A            R::::R     R:::::R          A:::::A:::::A            T:::::T[/]
+[bold yellow]  B::::BBBBBB:::::B   H::::::HHHHH::::::H           A:::::A A:::::A           R::::RRRRRR:::::R          A:::::A A:::::A           T:::::T[/]
+[bold yellow]  B:::::::::::::BB    H:::::::::::::::::H          A:::::A   A:::::A          R:::::::::::::RR          A:::::A   A:::::A          T:::::T[/]
+[bold yellow]  B::::BBBBBB:::::B   H:::::::::::::::::H         A:::::A     A:::::A         R::::RRRRRR:::::R        A:::::A     A:::::A         T:::::T[/]
+[bold yellow]  B::::B     B:::::B  H::::::HHHHH::::::H        A:::::AAAAAAAAA:::::A        R::::R     R:::::R      A:::::AAAAAAAAA:::::A        T:::::T[/]
+[bold yellow]  B::::B     B:::::B  H:::::H     H:::::H       A:::::::::::::::::::::A       R::::R     R:::::R     A:::::::::::::::::::::A       T:::::T[/]
+[bold yellow]  B::::B     B:::::B  H:::::H     H:::::H      A:::::AAAAAAAAAAAAA:::::A      R::::R     R:::::R    A:::::AAAAAAAAAAAAA:::::A      T:::::T[/]
+[bold yellow]BB:::::BBBBBB::::::BHH::::::H     H::::::HH   A:::::A             A:::::A   RR:::::R     R:::::R   A:::::A             A:::::A   TT:::::::TT[/]
+[bold yellow]B:::::::::::::::::B H:::::::H     H:::::::H  A:::::A               A:::::A  R::::::R     R:::::R  A:::::A               A:::::A  T:::::::::T[/]
+[bold yellow]B::::::::::::::::B  H:::::::H     H:::::::H A:::::A                 A:::::A R::::::R     R:::::R A:::::A                 A:::::A T:::::::::T[/]
+[bold yellow]BBBBBBBBBBBBBBBBB   HHHHHHHHH     HHHHHHHHHAAAAAAA                   AAAAAAARRRRRRRR     RRRRRRRAAAAAAA                   AAAAAAATTTTTTTTTTT[/]
+
+[bold cyan]CCCCCCCCCCCCCCCC   OOOOOOOOO     DDDDDDDDDDDDD      EEEEEEEEEEEEEEEEEEEEEE[/]
+[bold cyan]CCC::::::::::::C   OO:::::::::OO   D::::::::::::DDD   E::::::::::::::::::::E[/]
+[bold cyan]CC:::::::::::::::C OO:::::::::::::OO D:::::::::::::::DD E::::::::::::::::::::E[/]
+[bold cyan]C:::::CCCCCCCC::::CO:::::::OOO:::::::ODDD:::::DDDDD:::::DEE::::::EEEEEEEEE::::E[/]
+[bold cyan]C:::::C       CCCCCCO::::::O   O::::::O  D:::::D    D:::::DE:::::E       EEEEEE[/]
+[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::E[/]
+[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE::::::EEEEEEEEEE[/]
+[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::::::::::::E[/]
+[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::::::::::::E[/]
+[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE::::::EEEEEEEEEE[/]
+[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::E[/]
+[bold cyan]C:::::C       CCCCCCO::::::O   O::::::O  D:::::D    D:::::DE:::::E       EEEEEE[/]
+[bold cyan]C:::::CCCCCCCC::::CO:::::::OOO:::::::ODDD:::::DDDDD:::::DEE::::::EEEEEEEEE::::E[/]
+[bold cyan]CC:::::::::::::::C OO:::::::::::::OO D:::::::::::::::DD E::::::::::::::::::::E[/]
+[bold cyan]CCC::::::::::::C   OO:::::::::OO   D::::::::::::DDD   E::::::::::::::::::::E[/]
+[bold cyan]CCCCCCCCCCCCCCCC     OOOOOOOOO     DDDDDDDDDDDDD      EEEEEEEEEEEEEEEEEEEEEE[/]
 """
 
 MODES = {
