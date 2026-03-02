@@ -43,8 +43,9 @@ FREE_CODING_MODELS = {
         "provider": "zhipu",
         "api_key_env": "ZHIPU_API_KEY",
         "models": [
+            "glm-4-flash-2024-05-18",
+            "glm-4-0520",
             "glm-4",
-            "glm-4-flash",
             "glm-4-plus",
             "glm-4-code",
         ],
