@@ -8,24 +8,24 @@ from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
-from rich.prompt import Prompt
+from rich.style import Style
 from brain.models import get_available_models, FREE_CODING_MODELS
 from orchestrator import Orchestrator
 
 console = Console()
 
 BANNER = """
-BBBB   H   H  AAA   RRRR   AAAAA  TTTTT
-B   B  H   H A   A R   R A     A   T
-BBBB   HHHHH AAAAA RRRR  AAAAAAA   T
-B   B  H   H A   A R  R  A     A   T
-BBBB   H   H A   A R   R A     A   T
+[bold yellow on black]BBBB   H   H  AAA   RRRR   AAAAA  TTTTT[/]
+[bold yellow on black]B   B  H   H A   A R   R A     A   T[/]
+[bold yellow on black]BBBB   HHHHH AAAAA RRRR  AAAAAAA   T[/]
+[bold yellow on black]B   B  H   H A   A R  R  A     A   T[/]
+[bold yellow on black]BBBB   H   H A   A R   R A     A   T[/]
 
-CCCC  OOO  DDD  EEEE
-C    O   O D  D E
-C    O   O D   D EE
-C    O   O D  D E
-CCCC  OOO  DDD  EEEE
+[bold cyan on black]CCCC  OOO  DDD  EEEE[/]
+[bold cyan on black]C    O   O D  D E[/]
+[bold cyan on black]C    O   O D   D EE[/]
+[bold cyan on black]C    O   O D  D E[/]
+[bold cyan on black]CCCC  OOO  DDD  EEEE[/]
 """
 
 MODES = {
@@ -45,7 +45,7 @@ class BharatCodeTUI:
 
     def print_banner(self):
         console.clear()
-        console.print(Text(BANNER, style="bold yellow"))
+        console.print(BANNER, justify="center")
         console.print(
             Panel.fit(
                 "[dim]Open Source AI Coding Agent[/dim]",
