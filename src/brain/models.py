@@ -33,7 +33,7 @@ FREE_CODING_MODELS = {
         "models": [
             "deepseek-ai/DeepSeek-Coder-V2-Instruct",
             "Qwen/Qwen2.5-Coder-32B-Instruct",
-            "THUDM/GLM-4-Code-Assistant",
+            "THUDM/GLM-4-Flash",
             "01-ai/Yi-34B-Coder",
             "meta-llama/Llama-3.3-70B-Instruct",
             "microsoft/WizardCoder-Python-34B-V1.0",
@@ -63,8 +63,10 @@ FREE_CODING_MODELS = {
         "provider": "minimax",
         "api_key_env": "MINIMAX_API_KEY",
         "models": [
+            "MiniMax-M2.5",
             "MiniMax-M2.1",
-            "MiniMax-M2.2",
+            "MiniMax-M2",
+            "M2-her",
         ],
     },
 }
