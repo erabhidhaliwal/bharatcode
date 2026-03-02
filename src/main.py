@@ -270,9 +270,13 @@ class BharatCodeTUI:
             result = self.process_message(user_input)
             self.conversation.append(("assistant", result))
             if result and not result.startswith("Error:"):
-                console.print(Panel(result, border_style="green", width=console.width))
+                console.print(
+                    Panel(result, border_style="green", width=min(console.width, 100))
+                )
             else:
-                console.print(Panel(result, border_style="red", width=console.width))
+                console.print(
+                    Panel(result, border_style="red", width=min(console.width, 100))
+                )
             console.print()
 
 
