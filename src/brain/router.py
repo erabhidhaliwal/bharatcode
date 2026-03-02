@@ -16,7 +16,7 @@ def openrouter_chat(messages, model, api_key):
         "messages": messages,
     }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -37,7 +37,7 @@ def siliconflow_chat(
         "messages": messages,
     }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -60,7 +60,7 @@ def zhipu_chat(messages, model="glm-4-flash"):
         "messages": messages,
     }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -83,7 +83,7 @@ def moonshot_chat(messages, model="kimi-k2.5"):
         "messages": messages,
     }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -106,7 +106,7 @@ def minimax_chat(messages, model="MiniMax-M2.1"):
         "messages": messages,
     }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
