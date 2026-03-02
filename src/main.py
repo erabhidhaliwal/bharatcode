@@ -114,12 +114,28 @@ class BharatCodeTUI:
         console.print("  📖 explain  - explain, what, how, why\n")
 
     def print_models(self):
-        console.print("\n[bold]Available Free Models:[/bold]\n")
+        console.print("\n[bold]=== FREE Models (No API Key Required) ===[/bold]\n")
+
+        from brain.models import FREE_CODING_MODELS
+
         for provider, info in FREE_CODING_MODELS.items():
-            console.print(f"[bold cyan]{provider.upper()}:[/bold cyan]")
-            for model in info["models"]:
-                console.print(f"  • {model}")
-            console.print()
+            if not info.get("api_key_required", False):
+                console.print(f"[bold green]✓ {provider.upper()}:[/bold green]")
+                for model in info["models"]:
+                    console.print(f"  • {model}")
+                console.print()
+
+        console.print("\n[bold]=== Models (Require API Key) ===[/bold]\n")
+        for provider, info in FREE_CODING_MODELS.items():
+            if info.get("api_key_required", False):
+                console.print(f"[bold yellow]⚠ {provider.upper()}:[/bold yellow]")
+                for model in info["models"]:
+                    console.print(f"  • {model}")
+                console.print()
+
+        console.print(
+            "\n[dim]To use Ollama models, make sure 'ollama serve' is running locally[/dim]\n"
+        )
 
     def set_model(self, model_id):
         os.environ["DEFAULT_MODEL"] = model_id
