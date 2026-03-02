@@ -71,8 +71,6 @@ def zhipu_chat(messages, model="glm-4-flash"):
     }
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
-        print(f"[DEBUG] Status: {response.status_code}")
-        print(f"[DEBUG] Response: {response.text[:500]}")
 
         if response.status_code != 200:
             try:
@@ -127,8 +125,6 @@ def minimax_chat(messages, model="MiniMax-M2.5"):
     }
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
-        print(f"[DEBUG] Status: {response.status_code}")
-        print(f"[DEBUG] Response: {response.text[:500]}")
 
         if response.status_code != 200:
             try:

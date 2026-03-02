@@ -252,7 +252,10 @@ class BharatCodeTUI:
             self.conversation.append(("user", user_input))
             result = self.process_message(user_input)
             self.conversation.append(("assistant", result))
-            console.print(Panel(result, border_style="green"))
+            if result and not result.startswith("Error:"):
+                console.print(Panel(result, border_style="green", width=console.width))
+            else:
+                console.print(Panel(result, border_style="red", width=console.width))
             console.print()
 
 
