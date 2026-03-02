@@ -111,7 +111,7 @@ def moonshot_chat(messages, model="kimi-k2.5"):
         return f"Error: {str(e)}"
 
 
-def minimax_chat(messages, model="MiniMax-M2.1"):
+def minimax_chat(messages, model="MiniMax-M2.5"):
     api_key = os.getenv("MINIMAX_API_KEY")
     if not api_key:
         return "Error: MINIMAX_API_KEY not set\n\nGet free key: https://platform.minimax.ai/"
@@ -132,7 +132,13 @@ def minimax_chat(messages, model="MiniMax-M2.1"):
 
         if response.status_code != 200:
             try:
-                error_msg = response.json()
+                error_data = response.json()
+                if (
+                    error_data.get("base_resp", {}).get("status_msg")
+                    == "invalid api key"
+                ):
+                    return "Error: Invalid API key!\n\nPlease get a valid key from https://platform.minimax.ai/"
+                error_msg = error_data
                 return f"Error: {response.status_code} - {error_msg}"
             except:
                 return f"Error: {response.status_code} - {response.text}"
