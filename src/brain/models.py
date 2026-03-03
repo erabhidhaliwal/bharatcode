@@ -1,65 +1,62 @@
 FREE_CODING_MODELS = {
-    "ollama": {
-        "provider": "ollama",
-        "api_key_required": False,
+    "openrouter": {
+        "provider": "openrouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key_env": "OPENROUTER_API_KEY",
         "models": [
-            "starcoder2",
-            "deepseek-coder-v2",
-            "qwen2.5-coder",
-            "codellama",
-            "llama3.3",
-            "llama3.2",
-            "phi4",
-            "mistral",
-            "glm-5",
+            {"id": "minimax/MiniMax-M2.1", "name": "MiniMax-M2.1", "type": "coding"},
+            {
+                "id": "deepseek/deepseek-coder",
+                "name": "DeepSeek-Coder",
+                "type": "coding",
+            },
+            {
+                "id": "qwen/qwen-coder-turbo",
+                "name": "Qwen-Coder-Turbo",
+                "type": "coding",
+            },
+            {"id": "google/gemma-2-27b", "name": "Gemma-2-27B", "type": "general"},
+        ],
+    },
+    "cohere": {
+        "provider": "cohere",
+        "base_url": "https://api.cohere.ai/v1",
+        "api_key_env": "COHERE_API_KEY",
+        "models": [
+            {"id": "command-r", "name": "Command-R", "type": "general"},
         ],
     },
 }
 
 
-def get_available_models():
+def get_default_model():
+    return "minimax/MiniMax-M2.1"
+
+
+def get_model_by_id(model_id):
+    for provider, info in FREE_CODING_MODELS.items():
+        for model in info["models"]:
+            if model["id"] == model_id or model["name"].lower().replace(
+                "-", ""
+            ) == model_id.lower().replace("-", "").replace(":", ""):
+                return {
+                    "provider": info["provider"],
+                    "model": model["id"],
+                    "base_url": info.get("base_url"),
+                    "api_key_env": info.get("api_key_env"),
+                }
+    return None
+
+
+def get_all_models():
     models = []
     for provider, info in FREE_CODING_MODELS.items():
         for model in info["models"]:
             models.append(
                 {
-                    "id": f"{provider}:{model}",
-                    "name": model,
-                    "provider": provider,
-                    "free": not info.get("api_key_required", False),
+                    "id": f"{provider}:{model['id']}",
+                    "name": model["name"],
+                    "type": model.get("type", "general"),
                 }
             )
     return models
-
-
-def get_free_models():
-    """Get only models that don't require API key"""
-    models = []
-    for provider, info in FREE_CODING_MODELS.items():
-        if not info.get("api_key_required", False):
-            for model in info["models"]:
-                models.append(
-                    {
-                        "id": f"{provider}:{model}",
-                        "name": model,
-                        "provider": provider,
-                    }
-                )
-    return models
-
-
-def get_model_by_id(model_id):
-    if ":" not in model_id:
-        return None
-    provider, model = model_id.split(":", 1)
-    if provider in FREE_CODING_MODELS:
-        info = FREE_CODING_MODELS[provider]
-        if model in info.get("models", []):
-            return {
-                "provider": info["provider"],
-                "model": model,
-                "api_key_env": info.get("api_key_env"),
-                "base_url": info.get("base_url"),
-                "api_key_required": info.get("api_key_required", False),
-            }
-    return None

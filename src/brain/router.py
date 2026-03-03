@@ -1,205 +1,140 @@
 import os
-import json
 import requests
-from brain.models import get_model_by_id, FREE_CODING_MODELS
-from brain.ollama import ollama_chat
+from brain.models import get_model_by_id, get_default_model
+
+DEFAULT_MODEL = "minimax/MiniMax-M2.1"
 
 
-def stream_response(response_text):
-    """Generator to stream response character by character for better UX"""
-    for char in response_text:
-        yield char
+def chat_completion(messages, model=None, api_key=None, provider="openrouter"):
+    if not model:
+        model = DEFAULT_MODEL
+    
+    if provider == "openrouter":
+        return openrouter_chat(messages, model, api_key)
+    elif provider == "cohere":
+        return cohere_chat(messages, model, api_key)
+    else:
+        return openrouter_chat(messages, model, api_key)
 
 
-def openrouter_chat(messages, model, api_key, stream=False):
+def openrouter_chat(messages, model, api_key):
+    if not api_key:
+        return {
+            "error": True,
+            "message": "API key required. Get free key: https://openrouter.ai/settings/keys\n\nFree $1 credit on signup!"
+        }
+    
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://bharatcode.local",
+        "X-Title": "BharatCode",
     }
     data = {
         "model": model,
         "messages": messages,
     }
-    if stream:
-        data["stream"] = True
+    
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-def siliconflow_chat(
-    messages, model, api_key, base_url="https://api.siliconflow.cn/v1", stream=False
-):
-    url = f"{base_url}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    data = {
-        "model": model,
-        "messages": messages,
-    }
-    if stream:
-        data["stream"] = True
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-def zhipu_chat(messages, model="glm-4-flash"):
-    api_key = os.getenv("ZHIPU_API_KEY")
-    if not api_key:
-        return "Error: ZHIPU_API_KEY not set"
-
-    url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    data = {
-        "model": model,
-        "messages": messages,
-    }
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-
-        if response.status_code != 200:
-            try:
-                error_msg = response.json()
-                return f"Error: {response.status_code} - {error_msg}"
-            except:
-                return f"Error: {response.status_code} - {response.text}"
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-def moonshot_chat(messages, model="kimi-k2.5"):
-    api_key = os.getenv("MOONSHOT_API_KEY")
-    if not api_key:
-        return "Error: MOONSHOT_API_KEY not set\n\nGet free key: https://platform.moonshot.cn/"
-
-    url = "https://api.moonshot.cn/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    data = {
-        "model": model,
-        "messages": messages,
-    }
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        if response.status_code != 200:
-            error_msg = response.json()
-            return f"Error: {response.status_code} - {error_msg}"
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-def minimax_chat(messages, model="MiniMax-M2.5"):
-    api_key = os.getenv("MINIMAX_API_KEY")
-    if not api_key:
-        return "Error: MINIMAX_API_KEY not set\n\nGet free key: https://platform.minimax.ai/"
-
-    url = "https://api.minimax.chat/v1/text/chatcompletion_v2"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    data = {
-        "model": model,
-        "messages": messages,
-    }
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+        
         if response.status_code != 200:
             try:
                 error_data = response.json()
-                if (
-                    error_data.get("base_resp", {}).get("status_msg")
-                    == "invalid api key"
-                ):
-                    return "Error: Invalid API key!\n\nPlease get a valid key from https://platform.minimax.ai/"
-                error_msg = error_data
-                return f"Error: {response.status_code} - {error_msg}"
+                return {
+                    "error": True,
+                    "message": f"API Error ({response.status_code}): {error_data.get('error', {}).get('message', 'Unknown error')}"
+                }
             except:
-                return f"Error: {response.status_code} - {response.text}"
+                return {
+                    "error": True,
+                    "message": f"HTTP {response.status_code}: {response.text[:200]}"
+                }
+        
         result = response.json()
-
+        
         if "choices" in result and len(result["choices"]) > 0:
-            return result["choices"][0]["message"]["content"]
-        elif "completion_message" in result:
-            return result["completion_message"]["content"]
-        elif "text" in result:
-            return result["text"]
+            return {
+                "error": False,
+                "content": result["choices"][0]["message"]["content"]
+            }
         else:
-            return f"Error: Unexpected response format: {result}"
+            return {
+                "error": True,
+                "message": f"Unexpected response: {result}"
+            }
+            
+    except requests.exceptions.Timeout:
+        return {
+            "error": True,
+            "message": "Request timed out. Try again or use a different model."
+        }
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "error": True,
+            "message": f"Error: {str(e)}"
+        }
+
+
+def cohere_chat(messages, model, api_key):
+    if not api_key:
+        return {
+            "error": True,
+            "message": "API key required. Get free key: https://cohere.ai/"
+        }
+    
+    url = "https://api.cohere.ai/v1/chat"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    
+    chat_history = []
+    system = None
+    for msg in messages:
+        if msg["role"] == "system":
+            system = msg["content"]
+        else:
+            chat_history.append({"role": msg["role"], "message": msg["content"]})
+    
+    data = {
+        "model": model,
+        "chat_history": chat_history,
+    }
+    if system:
+        data["system_prompt"] = system
+    
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+        
+        if response.status_code != 200:
+            return {
+                "error": True,
+                "message": f"API Error: {response.text[:200]"
+            }
+        
+        result = response.json()
+        return {
+            "error": False,
+            "content": result.get("text", str(result))
+        }
+    except Exception as e:
+        return {
+            "error": True,
+            "message": f"Error: {str(e)}"
+        }
 
 
 def route_chat(messages, model=None):
-    model_id = model or os.getenv("DEFAULT_MODEL", "ollama:starcoder2")
-
-    if ":" in model_id:
-        model_info = get_model_by_id(model_id)
-        if model_info:
-            provider = model_info["provider"]
-            model_name = model_info["model"]
-
-            if provider == "ollama":
-                return ollama_chat(messages, model=model_name)
-            elif provider == "openrouter":
-                api_key = os.getenv("OPENROUTER_API_KEY")
-                if not api_key:
-                    return "Error: OPENROUTER_API_KEY not set\n\nGet free key: https://openrouter.ai/settings/keys"
-                return openrouter_chat(messages, model=model_name, api_key=api_key)
-            elif provider == "siliconflow":
-                api_key = os.getenv("SILICONFLOW_API_KEY")
-                if not api_key:
-                    return "Error: SILICONFLOW_API_KEY not set\n\nGet free key: https://siliconflow.cn/"
-                return siliconflow_chat(
-                    messages,
-                    model=model_name,
-                    api_key=api_key,
-                    base_url=model_info.get("base_url"),
-                )
-            elif provider == "zhipu":
-                return zhipu_chat(messages, model=model_name)
-            elif provider == "moonshot":
-                return moonshot_chat(messages, model=model_name)
-            elif provider == "minimax":
-                api_key = os.getenv("MINIMAX_API_KEY")
-                if not api_key:
-                    return "Error: MINIMAX_API_KEY not set\n\nGet free key: https://platform.minimax.ai/\n\nThen run: /set MINIMAX_API_KEY=your-key-here"
-                return minimax_chat(messages, model=model_name)
-
-    engine = os.getenv("LLM_ENGINE", "ollama").lower()
-
-    if engine == "ollama":
-        selected_model = os.getenv("OLLAMA_MODEL", "starcoder2")
-        return ollama_chat(messages, model=selected_model)
-    elif engine == "zhipu":
-        return zhipu_chat(messages)
-    elif engine == "minimax":
-        return minimax_chat(messages)
-    else:
-        return glm_chat(messages)
-
-
-def glm_chat(messages, model="glm-4-flash"):
-    return zhipu_chat(messages, model=model)
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    
+    if not model:
+        model = DEFAULT_MODEL
+    
+    result = openrouter_chat(messages, model, api_key)
+    
+    if result.get("error"):
+        return result["message"]
+    
+    return result["content"]
