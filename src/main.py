@@ -89,7 +89,7 @@ class BharatCodeTUI:
                     "[yellow]⚠️  No API Key configured![/yellow]\n\n"
                     "Get free key: [cyan]https://openrouter.ai/settings/keys[/cyan]\n"
                     "Then run: [cyan]/setkey YOUR_API_KEY[/cyan]\n\n"
-                    "[dim]Or ask the developer for the shared key[/dim]",
+                    "[dim]Free $1 credit on signup - no credit card needed![/dim]",
                     title="🔑 Setup Required",
                     border_style="yellow",
                     width=60,
@@ -98,7 +98,8 @@ class BharatCodeTUI:
         else:
             console.print(
                 Panel(
-                    f"[green]✓[/green] Using: [bold]{self.model}[/bold]",
+                    "[green]✓[/green] Using: [bold]openrouter/free[/bold]\n"
+                    "[dim]Auto-selects best free model from OpenRouter[/dim]",
                     border_style="green",
                     width=60,
                 )

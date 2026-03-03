@@ -2,7 +2,7 @@ import os
 import requests
 from brain.models import get_model_by_id, get_default_model
 
-DEFAULT_MODEL = "minimax/MiniMax-M2.1"
+DEFAULT_MODEL = "openrouter/free"
 
 
 def chat_completion(messages, model=None, api_key=None, provider="openrouter"):
