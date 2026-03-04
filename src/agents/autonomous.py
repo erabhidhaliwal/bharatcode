@@ -1,6 +1,5 @@
 import os
 import subprocess
-import tempfile
 import shutil
 from pathlib import Path
 from brain.router import route_chat
@@ -11,24 +10,30 @@ WORKING_DIR = os.getcwd()
 class TaskExecutor:
     """Agent that executes real tasks on the machine"""
 
-    def __init__(self):
-        self.working_dir = WORKING_DIR
+    def __init__(self, project_dir=None):
+        self.project_dir = project_dir
+        if project_dir:
+            os.makedirs(project_dir, exist_ok=True)
 
-    def run_command(self, command, timeout=30):
+    def get_working_dir(self):
+        return self.project_dir or WORKING_DIR
+
+    def run_command(self, command, timeout=60):
         """Run a shell command and return output"""
         try:
+            cwd = self.get_working_dir()
             result = subprocess.run(
                 command,
                 shell=True,
-                cwd=self.working_dir,
+                cwd=cwd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
             )
             return {
                 "success": result.returncode == 0,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
+                "stdout": result.stdout[:2000],
+                "stderr": result.stderr[:500],
                 "returncode": result.returncode,
             }
         except subprocess.TimeoutExpired:
@@ -44,232 +49,211 @@ class TaskExecutor:
     def create_file(self, filepath, content):
         """Create a file with content"""
         try:
+            cwd = self.get_working_dir()
+            if self.project_dir and not filepath.startswith("/"):
+                filepath = os.path.join(self.project_dir, filepath)
+            else:
+                filepath = os.path.join(cwd, filepath)
+
             path = Path(filepath)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
-            return {"success": True, "message": f"Created: {filepath}"}
+            return {"success": True, "message": f"✓ Created: {filepath}"}
         except Exception as e:
-            return {"success": False, "message": f"Error creating file: {e}"}
+            return {"success": False, "message": f"✗ Error: {e}"}
 
     def read_file(self, filepath):
         """Read a file"""
         try:
+            cwd = self.get_working_dir()
+            if self.project_dir and not filepath.startswith("/"):
+                filepath = os.path.join(self.project_dir, filepath)
+            else:
+                filepath = os.path.join(cwd, filepath)
+
             path = Path(filepath)
             if path.exists():
                 return {"success": True, "content": path.read_text()}
             return {"success": False, "message": "File not found"}
         except Exception as e:
-            return {"success": False, "message": f"Error reading file: {e}"}
+            return {"success": False, "message": f"Error: {e}"}
 
     def list_files(self, directory="."):
         """List files in directory"""
         try:
+            cwd = self.get_working_dir()
+            if self.project_dir and not directory.startswith("/"):
+                directory = os.path.join(self.project_dir, directory)
+            else:
+                directory = os.path.join(cwd, directory)
+
             path = Path(directory)
-            files = [str(f) for f in path.iterdir() if f.is_file()]
+            if not path.exists():
+                path.mkdir(parents=True, exist_ok=True)
+
+            files = []
+            for f in path.rglob("*"):
+                if f.is_file():
+                    files.append(str(f.relative_to(path)))
             return {"success": True, "files": files}
         except Exception as e:
-            return {"success": False, "message": f"Error listing files: {e}"}
-
-
-class PlanningAgent:
-    """Agent that breaks down tasks into steps"""
-
-    def plan(self, user_request):
-        prompt = f"""You are a task planner. Break down this request into clear, executable steps.
-
-Request: {user_request}
-
-Respond with a numbered list of steps. Each step should be a single actionable task.
-Example:
-1. Create project directory structure
-2. Write main HTML file
-3. Add CSS styling
-4. Test the application
-
-Steps:"""
-
-        result = route_chat([{"role": "user", "content": prompt}])
-        return result
+            return {"success": False, "message": f"Error: {e}"}
 
 
 class ExecutionAgent:
     """Agent that executes code and files"""
 
-    def __init__(self):
-        self.executor = TaskExecutor()
+    def __init__(self, project_dir=None):
+        self.executor = TaskExecutor(project_dir)
 
     def execute_step(self, step):
-        """Execute a single step"""
-        step_lower = step.lower()
+        """Execute a single step - either create file or run command"""
 
-        if (
-            "create file" in step_lower
-            or "write file" in step_lower
-            or "create" in step_lower
-        ):
-            return self._handle_create(step)
-        elif "run" in step_lower or "execute" in step_lower or "install" in step_lower:
-            return self._handle_run(step)
-        elif "read" in step_lower or "check" in step_lower or "list" in step_lower:
-            return self._handle_read(step)
-        else:
-            return self._handle_general(step)
-
-    def _handle_create(self, step):
-        prompt = f"""Analyze this step and extract what file to create and its content.
-
-Step: {step}
-
-Respond in this format:
-FILE: <filepath>
-CONTENT:
-```
-<file content here>
-```
-
-If no specific content is provided, create a basic implementation."""
-
-        result = route_chat([{"role": "user", "content": prompt}])
-
-        if "FILE:" in result and "CONTENT:" in result:
-            try:
-                lines = result.split("\n")
-                filepath = None
-                content_start = None
-
-                for i, line in enumerate(lines):
-                    if line.startswith("FILE:"):
-                        filepath = line.replace("FILE:", "").strip()
-                    if "CONTENT:" in line:
-                        content_start = i
-                        break
-
-                if filepath and content_start:
-                    content = "\n".join(lines[content_start + 1 :])
-                    content = content.strip("`\n")
-                    return self.executor.create_file(filepath, content)
-            except:
-                pass
-
-        return {"success": False, "message": "Could not parse file creation"}
-
-    def _handle_run(self, step):
-        prompt = f"""Extract the exact terminal command to run from this step.
-
-Step: {step}
-
-Respond ONLY with the command, nothing else. Example: npm install"""
-
-        command = route_chat([{"role": "user", "content": prompt}]).strip()
-
-        if command:
-            return self.executor.run_command(command)
-        return {"success": False, "message": "No command found"}
-
-    def _handle_read(self, step):
-        prompt = f"""Extract the file path or directory to check from this step.
-
-Step: {step}
-
-Respond ONLY with the path."""
-
-        path = route_chat([{"role": "user", "content": prompt}]).strip()
-
-        if not path:
-            return {"success": False, "message": "No path found"}
-
-        if os.path.isfile(path):
-            return self.executor.read_file(path)
-        elif os.path.isdir(path):
-            return self.executor.list_files(path)
-        else:
-            return self.executor.run_command(step)
-
-    def _handle_general(self, step):
-        """Use AI to decide what to do"""
-        prompt = f"""Execute this task on the computer. 
-
-Current directory: {self.executor.working_dir}
+        prompt = f"""Analyze this task and decide what to do:
 
 Task: {step}
 
-What command should I run? Just give me the command."""
+You need to either:
+1. CREATE A FILE - if it involves writing code, HTML, CSS, JS, Python, etc.
+2. RUN A COMMAND - if it involves npm, git, python, etc.
 
-        command = route_chat([{"role": "user", "content": prompt}]).strip()
+Respond in this exact format:
+ACTION: CREATE
+FILENAME: index.html
+CONTENT:
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Example</title></head>
+<body>Hello</body>
+</html>
+```
 
-        if command and len(command) < 500:
-            return self.executor.run_command(command)
+OR for commands:
+ACTION: COMMAND
+COMMAND: npm install
 
-        return {"success": False, "message": "Could not determine action"}
+Keep content minimal but functional. Use code blocks properly."""
 
+        result = route_chat([{"role": "user", "content": prompt}])
 
-class ReviewAgent:
-    """Agent that reviews and improves code"""
+        result = result.strip()
 
-    def review(self, task, result):
-        prompt = f"""Review this task completion:
+        if "ACTION: CREATE" in result.upper():
+            return self._handle_create(result)
+        elif "ACTION: COMMAND" in result.upper():
+            return self._handle_command(result)
+        else:
+            return self.executor.run_command(step)
 
-Original Task: {task}
+    def _handle_create(self, response):
+        """Handle file creation"""
+        lines = response.split("\n")
+        filename = None
+        content_lines = []
+        in_content = False
 
-Result: {result}
+        for line in lines:
+            if line.startswith("FILENAME:"):
+                filename = line.replace("FILENAME:", "").strip()
+            elif "CONTENT:" in line.upper():
+                in_content = True
+                continue
+            elif in_content and line.strip() in ["```", "```"]:
+                continue
+            elif in_content:
+                content_lines.append(line)
 
-Provide brief feedback. If there are issues, suggest fixes."""
+        if not filename:
+            return {"success": False, "message": "No filename found"}
 
-        return route_chat([{"role": "user", "content": prompt}])
+        content = "\n".join(content_lines).strip()
+
+        if content:
+            return self.executor.create_file(filename, content)
+        else:
+            return {"success": False, "message": "No content found"}
+
+    def _handle_command(self, response):
+        """Handle command execution"""
+        lines = response.split("\n")
+        command = None
+
+        for line in lines:
+            if line.startswith("COMMAND:"):
+                command = line.replace("COMMAND:", "").strip()
+                break
+
+        if command:
+            return self.executor.run_command(command, timeout=120)
+
+        return {"success": False, "message": "No command found"}
 
 
 class AutonomousAgent:
-    """Main orchestrator that coordinates all agents"""
+    """Main orchestrator"""
 
-    def __init__(self):
-        self.planner = PlanningAgent()
-        self.executor = ExecutionAgent()
-        self.reviewer = ReviewAgent()
+    def __init__(self, project_name=None):
+        self.project_name = project_name
+        self.project_dir = None
+
+        if project_name:
+            self.project_dir = os.path.join(WORKING_DIR, project_name)
 
     def run(self, user_request, mode="auto"):
-        """Execute user request autonomously"""
+        """Execute user request"""
 
-        steps = []
+        if not self.project_dir:
+            safe_name = "".join(c for c in user_request[:20] if c.isalnum()).lower()
+            self.project_dir = os.path.join(WORKING_DIR, f"project_{safe_name}")
 
-        if mode in ["auto", "plan"]:
-            plan = self.planner.plan(user_request)
-            steps = self._parse_steps(plan)
+        os.makedirs(self.project_dir, exist_ok=True)
+        print(f"\n📁 Project folder: {self.project_dir}")
 
-        if not steps:
-            steps = [user_request]
+        steps = [
+            f"Create a detailed specification document SPEC.md for: {user_request}",
+            f"Create index.html - main HTML file for: {user_request}",
+            f"Create styles.css - beautiful styling for: {user_request}",
+            f"Create script.js - JavaScript functionality for: {user_request}",
+            f"Verify the website works - list all files created",
+        ]
 
+        executor = ExecutionAgent(self.project_dir)
         results = []
 
         for i, step in enumerate(steps, 1):
-            print(f"\n[Step {i}/{len(steps)}] {step[:60]}...")
+            print(f"\n[Step {i}/{len(steps)}] {step[:50]}...")
 
-            result = self.executor.execute_step(step)
+            result = executor.execute_step(step)
             results.append({"step": step, "result": result})
 
             if result.get("success"):
                 print(f"  ✓ Done")
-                if result.get("stdout"):
-                    print(f"  Output: {result['stdout'][:200]}")
+                if result.get("message"):
+                    print(f"     {result['message'][:80]}")
             else:
-                print(f"  ✗ {result.get('message', 'Failed')}")
+                print(f"  ⚠ {result.get('message', 'Note')[:60]}")
 
-        if mode in ["auto", "review"]:
-            print("\n[Review] Analyzing results...")
-            review = self.reviewer.review(user_request, str(results))
-            return review
+        files = executor.executor.list_files(".")
+        if files.get("success"):
+            print(f"\n📂 Files created ({len(files.get('files', []))}):")
+            for f in files.get("files", [])[:10]:
+                print(f"  • {f}")
 
-        return f"Completed {len(results)} steps. {sum(1 for r in results if r['result'].get('success'))} successful."
+        summary = f"""✅ Project created: {self.project_name or "project"}
 
-    def _parse_steps(self, plan):
-        """Parse numbered steps from plan"""
-        steps = []
-        lines = plan.split("\n")
-        for line in lines:
-            line = line.strip()
-            if line and (
-                line[0].isdigit() or line.startswith("-") or line.startswith("•")
-            ):
-                step = line.lstrip("0123456789.-•) ").strip()
-                if step:
-                    steps.append(step)
-        return steps[:5]
+Location: {self.project_dir}
+
+Files created:
+"""
+        if files.get("success"):
+            for f in files.get("files", [])[:10]:
+                summary += f"• {f}\n"
+
+        summary += f"""
+To view the website:
+  cd {self.project_dir}
+  # Open index.html in browser
+"""
+
+        return summary

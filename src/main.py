@@ -63,7 +63,6 @@ class BharatCode:
     def __init__(self):
         self.model = os.getenv("DEFAULT_MODEL", get_default_model())
         self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        self.agent = AutonomousAgent()
         self.mode = "auto"
         self.conversation = []
 
@@ -140,21 +139,28 @@ class BharatCode:
 
     def run_task(self, task):
         intent = self.detect_intent(task)
-        icons = {
-            "generate": "🔨",
-            "run": "▶️",
-            "debug": "🐛",
-            "refactor": "♻️",
-            "explain": "📖",
-            "review": "👀",
-        }
+        icons = {"generate": "🔨", "run": "▶️", "debug": "🐛", "refactor": "♻️", "explain": "📖", "review": "👀"}
         icon = icons.get(intent, "🤖")
-
+        
         console.print(f"\n{icon} [{intent.upper()}] {task[:50]}...")
-
-        result = self.agent.run(task, mode=self.mode)
-
+        
+        project_name = self._extract_project_name(task)
+        agent = AutonomousAgent(project_name=project_name)
+        result = agent.run(task, mode=self.mode)
+        
         return result
+    
+    def _extract_project_name(self, task):
+        """Extract project name from task"""
+        words = task.lower().split()
+        for word in ["called", "named", "name"]:
+            if word in words:
+                idx = words.index(word)
+                if idx + 1 < len(words):
+                    name = words[idx + 1].strip(".,!?)
+                    if name and len(name) > 1:
+                        return name
+        return None
 
     def handle_shell(self, command):
         executor = TaskExecutor()
