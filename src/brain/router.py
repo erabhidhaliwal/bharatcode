@@ -33,6 +33,7 @@ def openrouter_chat(messages, model, api_key):
     data = {
         "model": model,
         "messages": messages,
+        "max_tokens": 4096,
     }
 
     try:
