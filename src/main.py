@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.progress import Progress
 from brain.models import FREE_CODING_MODELS, get_default_model
 from brain.router import route_chat
-from agents.autonomous import AutonomousAgent, TaskExecutor
+from agents.autonomous import AutonomousAgent, TaskExecutor, get_memory, ProjectMemory
 
 console = Console()
 
@@ -65,9 +65,15 @@ class BharatCode:
         self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
         self.mode = "auto"
         self.conversation = []
+        self.memory = get_memory()
+        self.current_project = None
 
     def detect_intent(self, text):
         text_lower = text.lower()
+
+        if "improve" in text_lower or "add" in text_lower or "update" in text_lower:
+            return "improve"
+
         for intent, keywords in INTENT_KEYWORDS.items():
             for kw in keywords:
                 if kw in text_lower:
@@ -122,12 +128,13 @@ class BharatCode:
   • Debug errors
   • Read/write files
   • Build complete projects
+  • Remember projects for improvements
 
 [bold cyan]═══ Example Tasks ═══[/bold cyan]
-  "create a Python calculator app"
-  "build a todo list website"
-  "install node modules for my project"
-  "fix this bug in my code"
+  "create a website called CUPPY"
+  "create a Python calculator"
+  "improve CUPPY - add more features"
+  "add dark mode to my project"
 """)
 
     def print_models(self):
@@ -139,17 +146,38 @@ class BharatCode:
 
     def run_task(self, task):
         intent = self.detect_intent(task)
-        icons = {"generate": "🔨", "run": "▶️", "debug": "🐛", "refactor": "♻️", "explain": "📖", "review": "👀"}
+        icons = {
+            "generate": "🔨",
+            "improve": "✨",
+            "run": "▶️",
+            "debug": "🐛",
+            "refactor": "♻️",
+            "explain": "📖",
+            "review": "👀",
+        }
         icon = icons.get(intent, "🤖")
-        
+
         console.print(f"\n{icon} [{intent.upper()}] {task[:50]}...")
-        
+
         project_name = self._extract_project_name(task)
-        agent = AutonomousAgent(project_name=project_name)
+
+        if intent == "improve" and not project_name:
+            project_name = self.current_project
+
+        if intent == "improve" and project_name:
+            console.print(f"Improving project: {project_name}")
+            agent = AutonomousAgent(project_name=project_name, memory=self.memory)
+            result = agent.improve(task)
+            return result
+
+        agent = AutonomousAgent(project_name=project_name, memory=self.memory)
         result = agent.run(task, mode=self.mode)
-        
+
+        if project_name:
+            self.current_project = project_name
+
         return result
-    
+
     def _extract_project_name(self, task):
         """Extract project name from task"""
         words = task.lower().split()
@@ -157,7 +185,7 @@ class BharatCode:
             if word in words:
                 idx = words.index(word)
                 if idx + 1 < len(words):
-                    name = words[idx + 1].strip(".,!?)
+                    name = words[idx + 1].strip(".,!?")
                     if name and len(name) > 1:
                         return name
         return None
@@ -235,6 +263,20 @@ class BharatCode:
                 elif cmd == "/ls":
                     result = self.handle_ls(arg or ".")
                     console.print(Panel(result, border_style="cyan"))
+                elif cmd == "/projects":
+                    projects = self.memory.list_projects()
+                    if projects:
+                        console.print("\n[bold]📁 Your Projects:[/bold]")
+                        for p in projects:
+                            console.print(f"  • {p['name']} - {p['request'][:40]}...")
+                            console.print(f"    Folder: {p['folder']}")
+                    else:
+                        console.print("\nNo projects yet. Create one!")
+                elif cmd == "/use" and arg:
+                    self.current_project = arg.strip()
+                    console.print(
+                        f"[green]✓[/green] Using project: {self.current_project}"
+                    )
                 elif cmd == "/mode":
                     console.print("Select: auto, plan, execute, review")
                     choice = input(">> ").strip().lower()
