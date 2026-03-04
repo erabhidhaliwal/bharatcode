@@ -6,8 +6,10 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress
 from brain.models import FREE_CODING_MODELS, get_default_model
 from brain.router import route_chat
+from agents.autonomous import AutonomousAgent, TaskExecutor
 
 console = Console()
 
@@ -37,7 +39,7 @@ BANNER = """
 [bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::E[/]
 [bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE::::::EEEEEEEEEE[/]
 [bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::::::::::::E[/]
-[bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::::::::::::E[/]
+[bold cyan]C:::::C              O:::::O     O::::::O  D:::::D     D:::::DE:::::::::::::::E[/]
 [bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE::::::EEEEEEEEEE[/]
 [bold cyan]C:::::C              O:::::O     O:::::O  D:::::D     D:::::DE:::::E[/]
 [bold cyan]C:::::C       CCCCCCO::::::O   O::::::O  D:::::D    D:::::DE:::::E       EEEEEE[/]
@@ -47,29 +49,23 @@ BANNER = """
 [bold cyan]CCCCCCCCCCCCCCCC     OOOOOOOOO     DDDDDDDDDDDDD      EEEEEEEEEEEEEEEEEEEEEE[/]
 """
 
-MODES = {
-    "1": ("Plan", "Break down tasks into steps"),
-    "2": ("Execute", "Generate code and run tools"),
-    "3": ("Review", "Review and finalize code"),
-    "4": ("Auto", "Full agentic workflow"),
-}
-
 INTENT_KEYWORDS = {
-    "generate": ["create", "write", "make", "generate", "build", "add", "new"],
-    "run": ["run", "execute", "start", "test"],
+    "generate": ["create", "write", "make", "build", "add", "new", "website", "app"],
+    "run": ["run", "execute", "start", "install", "test"],
     "debug": ["debug", "fix", "error", "bug", "issue"],
-    "refactor": ["refactor", "improve", "optimize", "clean"],
-    "explain": ["explain", "what", "how", "why", "describe"],
-    "review": ["review", "check", "verify", "audit"],
+    "refactor": ["refactor", "improve", "optimize"],
+    "explain": ["explain", "what", "how", "why"],
+    "review": ["review", "check", "verify"],
 }
 
 
-class BharatCodeTUI:
+class BharatCode:
     def __init__(self):
         self.model = os.getenv("DEFAULT_MODEL", get_default_model())
+        self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        self.agent = AutonomousAgent()
         self.mode = "auto"
         self.conversation = []
-        self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
 
     def detect_intent(self, text):
         text_lower = text.lower()
@@ -86,11 +82,10 @@ class BharatCodeTUI:
         if not self.api_key:
             console.print(
                 Panel(
-                    "[yellow]⚠️  No API Key configured![/yellow]\n\n"
+                    "[yellow]⚠️  No API Key![/yellow]\n\n"
                     "Get free key: [cyan]https://openrouter.ai/settings/keys[/cyan]\n"
-                    "Then run: [cyan]/setkey YOUR_API_KEY[/cyan]\n\n"
-                    "[dim]Free $1 credit on signup - no credit card needed![/dim]",
-                    title="🔑 Setup Required",
+                    "Then: [cyan]/setkey YOUR_KEY[/cyan]",
+                    title="🔑 Setup",
                     border_style="yellow",
                     width=60,
                 )
@@ -98,56 +93,53 @@ class BharatCodeTUI:
         else:
             console.print(
                 Panel(
-                    "[green]✓[/green] Using: [bold]openrouter/free[/bold]\n"
-                    "[dim]Auto-selects best free model from OpenRouter[/dim]",
+                    f"[green]✓[/green] Autonomous Agent Ready\nModel: {self.model}",
                     border_style="green",
                     width=60,
                 )
             )
 
+        console.print(f"\n[dim]Mode:[/dim] {self.mode.upper()}")
         console.print(
-            f"\n[dim]Mode:[/dim] {self.mode.upper()}  [dim]Intent:[/dim] Auto\n"
+            "[dim]I can:[/dim] create files, run commands, build projects, debug & more!\n"
         )
 
     def print_help(self):
         console.print("""
-[bold]Commands:[/bold]
-  /setkey <key>   - Set OpenRouter API key
-  /models         - List available models  
-  /set <model>    - Switch model (e.g., /set minimax/MiniMax-M2.1)
-  /mode           - Choose workflow mode
-  /clear          - Clear chat
-  /help           - Show this help
-  exit            - Exit
+[bold cyan]═══ Commands ═══[/bold cyan]
+  /setkey <key>   Set OpenRouter API key
+  /models         List available models
+  /set <model>    Switch AI model
+  /mode           Choose mode (auto/plan/execute/review)
+  /shell <cmd>    Run terminal command
+  /read <file>    Read a file
+  /ls             List files
+  /help           Show this help
+  exit            Quit
 
-[bold]Quick:[/bold]
-  Just type your coding question!
-  I'll auto-detect if you want to generate, debug, or explain code.
+[bold cyan]═══ What I can do ═══[/bold cyan]
+  • Create websites, apps, scripts
+  • Run terminal commands  
+  • Debug errors
+  • Read/write files
+  • Build complete projects
+
+[bold cyan]═══ Example Tasks ═══[/bold cyan]
+  "create a Python calculator app"
+  "build a todo list website"
+  "install node modules for my project"
+  "fix this bug in my code"
 """)
 
     def print_models(self):
-        console.print("\n[bold]Available Free Models (via OpenRouter):[/bold]\n")
-
+        console.print("\n[bold]Available Models:[/bold]\n")
         for provider, info in FREE_CODING_MODELS.items():
             console.print(f"[cyan]{provider.upper()}:[/cyan]")
             for model in info["models"]:
-                icon = "💻" if model.get("type") == "coding" else "🧠"
-                console.print(f"  {icon} {model['name']} ({model['id']})")
-            console.print()
+                console.print(f"  • {model['name']} ({model['id']})")
 
-    def set_api_key(self, key):
-        self.api_key = key.strip()
-        os.environ["OPENROUTER_API_KEY"] = key.strip()
-        console.print(f"[green]✓[/green] API key set! ({len(key)} chars)")
-
-    def set_model(self, model_id):
-        self.model = model_id
-        os.environ["DEFAULT_MODEL"] = model_id
-        console.print(f"[green]✓[/green] Model set to: [bold]{model_id}[/bold]")
-
-    def process_message(self, user_input):
-        intent = self.detect_intent(user_input)
-
+    def run_task(self, task):
+        intent = self.detect_intent(task)
         icons = {
             "generate": "🔨",
             "run": "▶️",
@@ -158,27 +150,43 @@ class BharatCodeTUI:
         }
         icon = icons.get(intent, "🤖")
 
-        if self.mode == "plan":
-            console.print(f"\n{icon} Planning...")
-        elif self.mode == "execute":
-            console.print(f"\n{icon} Executing...")
-        elif self.mode == "review":
-            console.print(f"\n{icon} Reviewing...")
-        else:
-            console.print(f"\n{icon} {intent.title()}...")
+        console.print(f"\n{icon} [{intent.upper()}] {task[:50]}...")
 
-        result = route_chat(
-            [
-                {
-                    "role": "system",
-                    "content": "You are BharatCode, an expert coding assistant. Provide clear, concise answers. Include code examples when helpful.",
-                },
-                {"role": "user", "content": user_input},
-            ],
-            model=self.model,
-        )
+        result = self.agent.run(task, mode=self.mode)
 
         return result
+
+    def handle_shell(self, command):
+        executor = TaskExecutor()
+        result = executor.run_command(command, timeout=60)
+
+        if result["success"]:
+            output = result.get("stdout", "") or result.get("stderr", "")
+            return f"✓ Command executed successfully!\n\n{output[:500]}"
+        else:
+            return f"✗ Error: {result.get('stderr', 'Unknown error')}"
+
+    def handle_read(self, filepath):
+        executor = TaskExecutor()
+        result = executor.read_file(filepath)
+
+        if result["success"]:
+            content = result["content"]
+            if len(content) > 2000:
+                return f"```\n{content[:2000]}\n... (truncated)\n```"
+            return f"```\n{content}\n```"
+        return f"✗ {result.get('message', 'Error')}"
+
+    def handle_ls(self, directory="."):
+        executor = TaskExecutor()
+        result = executor.list_files(directory)
+
+        if result["success"]:
+            files = result.get("files", [])
+            return f"Files in {directory}:\n" + "\n".join(
+                f"  • {f}" for f in files[:20]
+            )
+        return f"✗ {result.get('message', 'Error')}"
 
     def run(self):
         self.print_banner()
@@ -203,44 +211,43 @@ class BharatCodeTUI:
                 arg = parts[1] if len(parts) > 1 else ""
 
                 if cmd == "/setkey" and arg:
-                    self.set_api_key(arg)
-                elif cmd == "/setkey":
-                    console.print("Usage: /setkey YOUR_API_KEY")
+                    self.api_key = arg
+                    os.environ["OPENROUTER_API_KEY"] = arg
+                    console.print("[green]✓[/green] API key set!")
                 elif cmd == "/models":
                     self.print_models()
                 elif cmd == "/set" and arg:
-                    self.set_model(arg)
+                    self.model = arg
+                    os.environ["DEFAULT_MODEL"] = arg
+                    console.print(f"[green]✓[/green] Model: {arg}")
+                elif cmd == "/shell" and arg:
+                    result = self.handle_shell(arg)
+                    console.print(Panel(result, border_style="cyan"))
+                elif cmd == "/read":
+                    result = self.handle_read(arg or ".")
+                    console.print(Panel(result, border_style="cyan"))
+                elif cmd == "/ls":
+                    result = self.handle_ls(arg or ".")
+                    console.print(Panel(result, border_style="cyan"))
                 elif cmd == "/mode":
-                    console.print("\n[bold]Select Mode:[/bold]")
-                    for k, (n, d) in MODES.items():
-                        console.print(f"  {k}. {n} - {d}")
-                    choice = input(">> ") or "4"
-                    if choice in MODES:
-                        self.mode = MODES[choice][0].lower()
-                elif cmd == "/clear":
-                    self.conversation = []
-                    self.print_banner()
+                    console.print("Select: auto, plan, execute, review")
+                    choice = input(">> ").strip().lower()
+                    if choice in ["auto", "plan", "execute", "review"]:
+                        self.mode = choice
                 elif cmd in ["/help", "/h"]:
                     self.print_help()
                 else:
                     console.print(f"[red]Unknown:[/red] {cmd}")
                 continue
 
-            result = self.process_message(user_input)
-
-            if result and "Error" in result:
-                console.print(Panel(result, border_style="red", width=80))
-                if "API key" in result:
-                    console.print(
-                        "\n[yellow]Get free key:[/yellow] https://openrouter.ai/settings/keys"
-                    )
-            else:
-                console.print(Panel(result, border_style="green", width=80))
+            result = self.run_task(user_input)
+            console.print(Panel(result, border_style="green", width=80))
+            console.print()
 
 
 def main():
-    tui = BharatCodeTUI()
-    tui.run()
+    app = BharatCode()
+    app.run()
 
 
 if __name__ == "__main__":

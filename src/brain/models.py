@@ -1,3 +1,9 @@
+import os
+import sys
+import subprocess
+import tempfile
+from pathlib import Path
+
 FREE_CODING_MODELS = {
     "openrouter": {
         "provider": "openrouter",
@@ -15,15 +21,7 @@ FREE_CODING_MODELS = {
                 "name": "Qwen-Coder-Turbo",
                 "type": "coding",
             },
-            {"id": "google/gemma-2-27b", "name": "Gemma-2-27B", "type": "general"},
-        ],
-    },
-    "cohere": {
-        "provider": "cohere",
-        "base_url": "https://api.cohere.ai/v1",
-        "api_key_env": "COHERE_API_KEY",
-        "models": [
-            {"id": "command-r", "name": "Command-R", "type": "general"},
+            {"id": "openrouter/free", "name": "Free-Router", "type": "auto"},
         ],
     },
 }
@@ -36,9 +34,7 @@ def get_default_model():
 def get_model_by_id(model_id):
     for provider, info in FREE_CODING_MODELS.items():
         for model in info["models"]:
-            if model["id"] == model_id or model["name"].lower().replace(
-                "-", ""
-            ) == model_id.lower().replace("-", "").replace(":", ""):
+            if model["id"] == model_id:
                 return {
                     "provider": info["provider"],
                     "model": model["id"],
