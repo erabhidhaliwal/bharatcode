@@ -5,6 +5,8 @@ import json
 import re
 import uuid
 import argparse
+from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -17,6 +19,8 @@ from rich.markdown import Markdown
 from rich.text import Text
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
+from rich.style import Style
+from rich.color import Color
 from brain.models import FREE_CODING_MODELS, get_default_model
 from brain.router import route_chat
 from agents.autonomous_expert import (
@@ -31,7 +35,7 @@ from agents.design_orchestrator import create_design_orchestrator
 console = Console()
 
 # ──────────────────────────────────────────────────────────────
-# BHARAT CODE SYSTEM PROMPT  — gives the AI its personality
+# BHARAT CODE SYSTEM PROMPT
 # ──────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are **BharatCode** — an expert AI coding assistant built for developers.
 
@@ -40,20 +44,14 @@ PERSONALITY:
 - Technically sharp but never condescending
 - You explain things simply when asked
 - You ask clarifying questions before jumping into big tasks
-- You use emojis sparingly to keep the tone warm 🙂
 
 BEHAVIOR RULES:
 1. For casual messages (greetings, small talk, thanks), respond warmly and briefly.
-2. For questions about coding concepts, explain clearly with examples.
-3. For task requests (create, build, debug, fix, review, refactor, run), FIRST ask clarifying questions before doing any work:
-   - What tech stack / language?
-   - What features or requirements?
-   - Any design preferences?
-   - Confirm understanding before proceeding.
-4. If the user says "go ahead", "yes", "do it", "proceed" — then describe what you'll build and confirm.
-5. Keep responses concise but helpful. No walls of text.
-6. When the user explicitly asks you to create/build something with enough detail, you may proceed.
-7. If you need more info, ask — don't guess.
+2. For coding questions, explain clearly with examples.
+3. For task requests (create, build, debug, fix, review), FIRST ask clarifying questions before doing any work.
+4. If the user says "go ahead", "yes", "do it", "proceed" — then proceed with the work.
+5. Keep responses concise but helpful.
+6. When creating files or running commands, show what you're doing.
 
 CAPABILITIES:
 - Create complete projects (websites, apps, scripts)
@@ -62,478 +60,365 @@ CAPABILITIES:
 - Review and analyze code
 - Refactor and optimize
 - Run terminal commands
-- Remember projects for future improvements
+- Read, write, and edit files
 
 You are chatting in a terminal CLI. Keep formatting clean and readable.
 """
 
 # ──────────────────────────────────────────────────────────────
-# INTENT CLASSIFICATION — uses LLM for smart classification
+# CONFIGURATION
 # ──────────────────────────────────────────────────────────────
-INTENT_PROMPT = """Classify this user message into ONE of these categories:
+BHARAT_CONFIG_DIR = Path.home() / ".bharat"
+BHARAT_SESSIONS_DIR = BHARAT_CONFIG_DIR / "sessions"
+BHARAT_SETTINGS_FILE = BHARAT_CONFIG_DIR / "settings.json"
+BHARAT_MEMORY_FILE = BHARAT_CONFIG_DIR / "memory.md"
 
-- "chat" → casual conversation, greetings, small talk, thanks, general questions
-- "ask" → asking about coding concepts, "how does X work", "what is Y"
-- "create" → wants to BUILD or CREATE something new (website, app, project, script)
-- "design" → wants to design UI/UX, generate aesthetic templates or design systems
-- "debug" → wants to FIX a bug, error, or issue
-- "review" → wants CODE REVIEW or analysis
-- "refactor" → wants to IMPROVE, OPTIMIZE, or REFACTOR existing code
-- "run" → wants to EXECUTE a command or run something
-- "improve" → wants to ADD features or UPDATE an existing project
-- "confirm" → user is saying "yes", "go ahead", "do it", "proceed", "sure"
+# Ensure directories exist
+BHARAT_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
-IMPORTANT RULES:
-- Short casual messages like "hi", "hello", "thanks" → "chat"
-- Questions about concepts → "ask"
-- Only classify as "create" if user CLEARLY wants something built
-- If ambiguous, default to "chat"
-
-User message: "{user_input}"
-
-Respond with ONLY the category name, nothing else."""
+# Default settings
+DEFAULT_SETTINGS = {
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "verbose": False,
+    "theme": "default",
+    "hooks": {},
+    "permissions": {
+        "allow": [],
+        "deny": [],
+    },
+}
 
 # ──────────────────────────────────────────────────────────────
-# SMALLER, CLEANER BANNER
+# SESSION MANAGEMENT
 # ──────────────────────────────────────────────────────────────
-BANNER = """
-[bold bright_yellow]╔══════════════════════════════════════════════════════════════╗[/]
-[bold bright_yellow]║[/]  [bold bright_cyan]██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ████████╗[/]          [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]  [bold bright_cyan]██╔══██╗██║  ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝[/]          [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]  [bold bright_cyan]██████╔╝███████║███████║██████╔╝███████║   ██║[/]             [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]  [bold bright_cyan]██╔══██╗██╔══██║██╔══██║██╔══██╗██╔══██║   ██║[/]             [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]  [bold bright_cyan]██████╔╝██║  ██║██║  ██║██║  ██║██║  ██║   ██║[/]             [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]  [bold bright_cyan]╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝[/]             [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]                                                              [bold bright_yellow]║[/]
-[bold bright_yellow]║[/]  [bold white]C O D E[/]   [dim]•[/dim]   [italic bright_green]Your AI Coding Companion[/]                    [bold bright_yellow]║[/]
-[bold bright_yellow]╚══════════════════════════════════════════════════════════════╝[/]
-"""
+class SessionManager:
+    """Manages conversation sessions with persistence"""
 
+    def __init__(self):
+        self.sessions = {}
+        self.load_sessions()
 
-# ──────────────────────────────────────────────────────────────
-# KEYWORD-BASED FAST INTENT (fallback when LLM is slow/unavailable)
-# ──────────────────────────────────────────────────────────────
-CHAT_PATTERNS = [
-    "hello", "hi", "hey", "sup", "yo", "howdy",
-    "how are you", "what's up", "whats up",
-    "good morning", "good evening", "good night",
-    "thanks", "thank you", "thx", "ty",
-    "bye", "goodbye", "see you", "later",
-    "who are you", "what are you", "what can you do",
-    "nice", "cool", "great", "awesome", "ok", "okay",
-]
-
-CONFIRM_PATTERNS = [
-    "yes", "yeah", "yep", "yup", "sure", "ok", "okay",
-    "go ahead", "do it", "proceed", "lets go", "let's go",
-    "go for it", "make it", "build it", "start",
-]
-
-INTENT_KEYWORDS = [
-    # Order matters! More specific intents first, broader ones later.
-    ("run", ["run ", "execute ", "start ", "install ", "test "]),
-    ("debug", ["debug", "fix ", "error", "bug", "issue", "broken", "crash", "not working"]),
-    ("refactor", ["refactor", "optimize", "clean up", "restructure"]),
-    ("review", ["review", "analyze", "look at", "check my"]),
-    ("improve", ["improve", "add feature", "update", "upgrade", "enhance"]),
-    ("design", ["design", " ui ", " ux ", "template", "aesthetic", "ui design", "ux design"]),
-    ("create", ["create ", "build ", "make ", "generate ", "new project", "write a "]),
-]
-
-
-class BharatCode:
-    def __init__(self, session_id=None):
-        self.model = os.getenv("DEFAULT_MODEL", get_default_model())
-        self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        self.conversation_history = []  # Actual conversation memory
-        self.memory = get_memory()
-        self.current_project = None
-        self.pending_task = None  # For tracking tasks awaiting confirmation
-        self.max_history = 20  # Keep last N messages for context
-
-        # Pixel Agents JSONL logging support
-        self.session_id = session_id or str(uuid.uuid4())
-        cwd = os.getcwd()
-        dir_name = re.sub(r"[^a-zA-Z0-9\-]", "-", cwd)
-        self.log_dir = os.path.expanduser(f"~/.bharatcode/projects/{dir_name}")
-        os.makedirs(self.log_dir, exist_ok=True)
-        self.jsonl_log = os.path.join(self.log_dir, f"{self.session_id}.jsonl")
-
-        # Write an initial clear text log if we just created it
-        if not os.path.exists(self.jsonl_log):
-            open(self.jsonl_log, 'w').close()
-            
-    def _log_event(self, event_type: str, data: dict):
-        """Append an event to the JSONL log for pixel-agents."""
-        if not getattr(self, "jsonl_log", None):
+    def load_sessions(self):
+        """Load all session files"""
+        if not BHARAT_SESSIONS_DIR.exists():
             return
-        
-        record = {"type": event_type}
-        record.update(data)
-        
-        try:
-            with open(self.jsonl_log, "a") as f:
-                f.write(json.dumps(record) + "\n")
-        except Exception:
-            pass
-            
-    def _log_turn_end(self):
-        self._log_event("system", {"subtype": "turn_duration"})
-        self.pending_task = None  # Clear pending task after each turn
+
+        for session_file in BHARAT_SESSIONS_DIR.glob("*.json"):
+            try:
+                with open(session_file) as f:
+                    session = json.load(f)
+                    session_id = session_file.stem
+                    self.sessions[session_id] = session
+            except Exception:
+                pass
+
+    def save_session(self, session_id, data):
+        """Save session to file"""
+        session_file = BHARAT_SESSIONS_DIR / f"{session_id}.json"
+        with open(session_file, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def create_session(self, name=None):
+        """Create a new session"""
+        session_id = name if name else str(uuid.uuid4())[:8]
+        if session_id in self.sessions:
+            session_id = f"{session_id}_{int(time.time())}"
+
+        self.sessions[session_id] = {
+            "id": session_id,
+            "name": name,
+            "created_at": datetime.now().isoformat(),
+            "messages": [],
+            "current_project": None,
+        }
+        self.save_session(session_id, self.sessions[session_id])
+        return session_id
+
+    def get_session(self, session_id):
+        """Get a session by ID or name"""
+        return self.sessions.get(session_id)
+
+    def get_recent_session(self):
+        """Get the most recently used session"""
+        if not self.sessions:
+            return None
+
+        # Sort by last updated
+        sorted_sessions = sorted(
+            self.sessions.items(),
+            key=lambda x: x[1].get("updated_at", x[1].get("created_at", "")),
+            reverse=True,
+        )
+        return sorted_sessions[0] if sorted_sessions else None
+
+    def list_sessions(self):
+        """List all sessions"""
+        return [
+            {
+                "id": sid,
+                "name": s.get("name", sid),
+                "created_at": s.get("created_at", ""),
+                "message_count": len(s.get("messages", [])),
+            }
+            for sid, s in sorted(
+                self.sessions.items(),
+                key=lambda x: x[1].get("updated_at", ""),
+                reverse=True,
+            )
+        ]
+
+    def delete_session(self, session_id):
+        """Delete a session"""
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            session_file = BHARAT_SESSIONS_DIR / f"{session_id}.json"
+            if session_file.exists():
+                session_file.unlink()
+
+
+class SettingsManager:
+    """Manages BharatCode settings"""
+
+    def __init__(self):
+        self.settings = DEFAULT_SETTINGS.copy()
+        self.load()
+
+    def load(self):
+        """Load settings from file"""
+        if BHARAT_SETTINGS_FILE.exists():
+            try:
+                with open(BHARAT_SETTINGS_FILE) as f:
+                    loaded = json.load(f)
+                    self.settings.update(loaded)
+            except Exception:
+                pass
+
+    def save(self):
+        """Save settings to file"""
+        BHARAT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(BHARAT_SETTINGS_FILE, "w") as f:
+            json.dump(self.settings, f, indent=2)
+
+    def get(self, key, default=None):
+        """Get a setting"""
+        return self.settings.get(key, default)
+
+    def set(self, key, value):
+        """Set a setting"""
+        self.settings[key] = value
+        self.save()
+
+    def get_model(self):
+        """Get the current model"""
+        return self.settings.get("model") or os.getenv("DEFAULT_MODEL") or get_default_model()
+
+    def set_model(self, model):
+        """Set the current model"""
+        self.settings["model"] = model
+        self.save()
+
+
+# ──────────────────────────────────────────────────────────────
+# BHARAT CODE CLI
+# ──────────────────────────────────────────────────────────────
+class BharatCode:
+    def __init__(self, session_name=None, continue_session=False, resume_session=None):
+        self.session_manager = SessionManager()
+        self.settings = SettingsManager()
+
+        # Session handling
+        if resume_session:
+            session = self.session_manager.get_session(resume_session)
+            if session:
+                self.session_id = resume_session
+                self.session = session
+            else:
+                console.print(f"[yellow]Session not found: {resume_session}[/]")
+                self.session_id = self.session_manager.create_session(session_name)
+                self.session = self.session_manager.get_session(self.session_id)
+        elif continue_session:
+            recent = self.session_manager.get_recent_session()
+            if recent:
+                self.session_id = recent[0]
+                self.session = recent[1]
+            else:
+                self.session_id = self.session_manager.create_session(session_name)
+                self.session = self.session_manager.get_session(self.session_id)
+        else:
+            self.session_id = self.session_manager.create_session(session_name)
+            self.session = self.session_manager.get_session(self.session_id)
+
+        # Model and API
+        self.model = self.settings.get_model()
+        self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+
+        # Conversation state
+        self.conversation_history = self.session.get("messages", [])
+        self.current_project = self.session.get("current_project")
+        self.pending_task = None
+
+        # Track intent for confirmation
+        self.last_intent = None
+        self.plan_mode = False
+
+        # Logging
+        self.log_session_start()
+
+    def log_session_start(self):
+        """Log session start"""
+        console.print(f"\n[dim]Session:[/] {self.session_id}")
+
+    def save_session(self):
+        """Save current session state"""
+        self.session["messages"] = self.conversation_history
+        self.session["current_project"] = self.current_project
+        self.session["updated_at"] = datetime.now().isoformat()
+        self.session_manager.save_session(self.session_id, self.session)
 
     # ──────────────────────────────────────────────────────────
-    # INTENT DETECTION — smart, multi-layered
+    # INTENT DETECTION
     # ──────────────────────────────────────────────────────────
+    CHAT_PATTERNS = [
+        "hello", "hi", "hey", "sup", "yo", "howdy",
+        "how are you", "what's up", "whats up",
+        "good morning", "good evening", "good night",
+        "thanks", "thank you", "thx", "ty",
+        "bye", "goodbye", "see you", "later",
+        "who are you", "what are you", "what can you do",
+        "nice", "cool", "great", "awesome", "ok", "okay",
+    ]
+
+    CONFIRM_PATTERNS = [
+        "yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+        "go ahead", "do it", "proceed", "lets go", "let's go",
+        "go for it", "make it", "build it", "start",
+    ]
+
+    INTENT_KEYWORDS = [
+        ("run", ["run ", "execute ", "start ", "install ", "test "]),
+        ("debug", ["debug", "fix ", "error", "bug", "issue", "broken"]),
+        ("refactor", ["refactor", "optimize", "clean up", "restructure"]),
+        ("review", ["review", "analyze", "look at", "check"]),
+        ("improve", ["improve", "add feature", "update", "upgrade"]),
+        ("design", ["design", " ui ", " ux ", "template", "aesthetic"]),
+        ("create", ["create ", "build ", "make ", "generate ", "new "]),
+    ]
+
     def detect_intent(self, text):
-        """
-        Multi-layered intent detection:
-        1. Check for confirmation patterns first
-        2. Check for casual chat patterns
-        3. Keyword-based fast classification
-        4. Falls back to LLM classification for ambiguous cases
-        """
         text_lower = text.lower().strip()
 
-        # Layer 1: Is this a confirmation?
-        if text_lower in CONFIRM_PATTERNS or any(p in text_lower for p in CONFIRM_PATTERNS):
+        # Confirmation
+        if text_lower in self.CONFIRM_PATTERNS or any(p in text_lower for p in self.CONFIRM_PATTERNS):
             if self.pending_task:
                 return "confirm"
 
-        # Layer 2: Is this casual chat?
-        if text_lower in CHAT_PATTERNS or any(
-            text_lower.startswith(p) for p in CHAT_PATTERNS
-        ):
+        # Chat patterns
+        if text_lower in self.CHAT_PATTERNS or any(text_lower.startswith(p) for p in self.CHAT_PATTERNS):
             return "chat"
 
-        # Layer 2b: Questions → "ask" (check before short-message filter)
-        if text_lower.startswith(("what ", "what's ", "how ", "why ", "can you explain", "explain", "tell me about")):
+        # Questions
+        if text_lower.startswith(("what ", "what's ", "how ", "why ", "can you", "explain", "tell me")):
             return "ask"
 
-        # Very short messages (1-3 words) without action keywords → chat
+        # Short messages
         if len(text_lower.split()) <= 3:
-            has_action_keyword = False
-            for _intent, keywords in INTENT_KEYWORDS:
-                if any(kw in text_lower for kw in keywords):
-                    has_action_keyword = True
-                    break
-            if not has_action_keyword:
+            has_action = any(kw in text_lower for _, kws in self.INTENT_KEYWORDS for kw in kws)
+            if not has_action:
                 return "chat"
 
-        # Layer 3: Keyword-based classification
-        # Check for improvement (must have "improve" + project reference)
-        if ("improve" in text_lower or "add" in text_lower or "update" in text_lower) and (
-            "project" in text_lower
-            or "my " in text_lower
-            or "the " in text_lower
-            or self.current_project
-        ):
-            return "improve"
-
-        for intent, keywords in INTENT_KEYWORDS:
+        # Keyword-based
+        for intent, keywords in self.INTENT_KEYWORDS:
             for kw in keywords:
                 if kw in text_lower:
                     return intent
 
-        # Default to chat for anything ambiguous
         return "chat"
 
     # ──────────────────────────────────────────────────────────
     # CONVERSATION MANAGEMENT
     # ──────────────────────────────────────────────────────────
-    def add_to_history(self, role, content):
-        """Add message to conversation history with trimming"""
+    def add_message(self, role, content):
         self.conversation_history.append({"role": role, "content": content})
-        # Keep history manageable
-        if len(self.conversation_history) > self.max_history * 2:
-            # Keep system prompt + last N messages
-            self.conversation_history = self.conversation_history[-self.max_history:]
+        # Keep last 50 messages
+        if len(self.conversation_history) > 50:
+            self.conversation_history = self.conversation_history[-50:]
+        self.save_session()
 
-    def get_chat_messages(self, user_message):
-        """Build messages array with system prompt + history + new message"""
+    def get_messages(self, user_message):
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-        # Add conversation history for context
-        for msg in self.conversation_history[-self.max_history:]:
-            messages.append(msg)
-
-        # Add current message
+        messages.extend(self.conversation_history[-20:])
         messages.append({"role": "user", "content": user_message})
         return messages
 
     # ──────────────────────────────────────────────────────────
-    # CHAT WITH AI — conversational, context-aware
+    # AI CHAT
     # ──────────────────────────────────────────────────────────
-    def chat_with_ai(self, user_message, is_ask=False):
-        """Send a conversational message with full history"""
-        messages = self.get_chat_messages(user_message)
+    def chat(self, user_message, show_thinking=True):
+        messages = self.get_messages(user_message)
 
-        with console.status("[bold cyan]Thinking...[/]", spinner="dots"):
-            result = route_chat(messages)
+        if show_thinking:
+            with console.status("[bold cyan]Thinking...[/]", spinner="dots"):
+                result = route_chat(messages, model=self.model)
+        else:
+            result = route_chat(messages, model=self.model)
 
         if result:
-            self.add_to_history("user", user_message)
-            self.add_to_history("assistant", result)
-            self._log_event("assistant", {"message": {"content": [{"type": "text", "text": result}]}})
+            self.add_message("user", user_message)
+            self.add_message("assistant", result)
 
         return result
 
     # ──────────────────────────────────────────────────────────
-    # BANNER & WELCOME
+    # TASK HANDLERS
     # ──────────────────────────────────────────────────────────
-    def print_banner(self):
-        console.clear()
-        console.print(BANNER)
-
-        if not self.api_key:
-            console.print(
-                Panel(
-                    "[yellow]⚠️  No API Key set![/]\n\n"
-                    "Get a free key → [link=https://openrouter.ai/settings/keys][cyan]openrouter.ai/settings/keys[/cyan][/link]\n"
-                    "Then type: [bold cyan]/setkey YOUR_KEY[/]",
-                    title="🔑 Quick Setup",
-                    border_style="yellow",
-                    width=60,
-                )
-            )
-        else:
-            status_table = Table(show_header=False, box=None, padding=(0, 1))
-            status_table.add_column(style="dim")
-            status_table.add_column()
-            status_table.add_row("Status", "[green]● Online[/]")
-            status_table.add_row("Model", f"[cyan]{self.model}[/]")
-            status_table.add_row("Type", "[bold]/help[/] for commands")
-
-            console.print(
-                Panel(
-                    status_table,
-                    title="[bold green]✓ Ready[/]",
-                    border_style="green",
-                    width=60,
-                )
-            )
-
-    def print_welcome(self):
-        """Friendly welcome message"""
-        console.print()
-        console.print(
-            "[bold bright_cyan]Hey there! 👋[/] I'm [bold]BharatCode[/] — your AI coding companion.\n"
-        )
-        console.print(
-            "  [dim]•[/] Chat with me about anything coding-related\n"
-            "  [dim]•[/] Ask me to [bold]create[/], [bold]debug[/], [bold]review[/], or [bold]explain[/] code\n"
-            "  [dim]•[/] Type [bold cyan]/help[/] for all commands\n"
-        )
-        console.print("[dim]Just type naturally — I'll understand what you need.[/]\n")
-
-    def print_help(self):
-        console.print()
-
-        # Commands table
-        cmd_table = Table(
-            title="[bold bright_cyan]⌨️  Commands[/]",
-            show_header=True,
-            header_style="bold",
-            border_style="bright_black",
-            width=60,
-        )
-        cmd_table.add_column("Command", style="cyan", width=20)
-        cmd_table.add_column("Description", width=38)
-        cmd_table.add_row("/setkey <key>", "Set your OpenRouter API key")
-        cmd_table.add_row("/models", "List available AI models")
-        cmd_table.add_row("/set <model>", "Switch to a different model")
-        cmd_table.add_row("/shell <cmd>", "Run a terminal command")
-        cmd_table.add_row("/read <file>", "Read a file's contents")
-        cmd_table.add_row("/ls [dir]", "List files in directory")
-        cmd_table.add_row("/design", "Start UI/UX expert mode")
-        cmd_table.add_row("/projects", "View your saved projects")
-        cmd_table.add_row("/use <name>", "Set active project")
-        cmd_table.add_row("/clear", "Clear the screen")
-        cmd_table.add_row("/help", "Show this help")
-        cmd_table.add_row("exit", "Quit BharatCode")
-
-        console.print(cmd_table)
-
-        console.print(
-            "\n[dim]💡 Tip: You don't need commands — just chat naturally![/]\n"
-            '[dim]   Example: "create a portfolio website with dark theme"[/]\n'
-            '[dim]   Example: "explain how async/await works in Python"[/]\n'
-            '[dim]   Example: "debug this function that keeps crashing"[/]\n'
-        )
-
-    def print_models(self):
-        console.print()
-        model_table = Table(
-            title="[bold bright_cyan]🤖 Available Models[/]",
-            show_header=True,
-            header_style="bold",
-            border_style="bright_black",
-        )
-        model_table.add_column("Provider", style="cyan")
-        model_table.add_column("Model Name")
-        model_table.add_column("Model ID", style="dim")
-
-        for provider, info in FREE_CODING_MODELS.items():
-            for model in info["models"]:
-                model_table.add_row(
-                    provider.upper(), model["name"], model["id"]
-                )
-
-        console.print(model_table)
-        console.print(f"\n[dim]Current model: [bold]{self.model}[/bold][/dim]\n")
-
-    # ──────────────────────────────────────────────────────────
-    # TASK HANDLERS — each asks clarifying questions first
-    # ──────────────────────────────────────────────────────────
-    def handle_chat(self, message):
-        """Handle casual conversation"""
-        return self.chat_with_ai(message)
-
-    def handle_ask(self, question):
-        """Handle concept explanation questions"""
-        return self.chat_with_ai(question)
-
     def handle_create(self, task):
-        """Handle creation tasks — ask clarifying questions first, then build"""
-        # Check if we already have enough details (task is specific)
-        needs_clarification = len(task.split()) < 8 or any(
-            word in task.lower() for word in ["something", "stuff", "thing", "website", "app", "project"]
-        )
+        """Handle project creation"""
+        # Check if user is confirming a pending task
+        if self.pending_task and self.pending_task.get("type") == "create":
+            full_task = f"{self.pending_task['original_request']}\n\n{task}"
+            self.pending_task = None
+            return self.execute_create(full_task)
 
-        if needs_clarification and not self.pending_task:
-            # First, ask clarifying questions
-            clarification_prompt = f"""The user wants to create something: "{task}"
+        # Check if task needs clarification
+        if len(task.split()) < 8 and not any(w in task.lower() for w in ["website", "app", "script", "project"]):
+            self.pending_task = {"type": "create", "original_request": task}
+            return self.chat(f"User wants to create: {task}. Ask 2-3 clarifying questions about tech stack, features, and design preferences.", show_thinking=True)
 
-Before building, ask 2-3 brief clarifying questions:
-- What exactly they want (features, purpose)
-- Any tech stack preferences (React, vanilla JS, Python, etc.)
-- Design preferences (modern, minimal, colorful, dark mode, etc.)
+        return self.execute_create(task)
 
-Be conversational and friendly. End with "Once you tell me, I'll start building right away!"
-"""
-            response = self.chat_with_ai(clarification_prompt)
-
-            # Store the pending task for later confirmation
-            self.pending_task = {
-                "type": "create",
-                "original_request": task,
-                "clarification_asked": True,
-            }
-            return response
-        else:
-            # User already provided details or is confirming — start building
-            if self.pending_task and self.pending_task.get("type") == "create":
-                # Combine original request with any clarification from conversation
-                recent_context = "\n".join(
-                    f"{msg['role']}: {msg['content']}"
-                    for msg in self.conversation_history[-6:]
-                )
-                full_task = f"{self.pending_task['original_request']}\n\nRequirements from conversation:\n{recent_context}"
-                self.pending_task = None
-                return self.handle_create_confirmed(full_task)
-            else:
-                # Direct creation with full task
-                return self.handle_create_confirmed(task)
-
-    def handle_create_confirmed(self, task):
-        """Actually execute the creation with full expert agent team"""
+    def execute_create(self, task):
+        """Execute project creation"""
         console.print()
-        console.print("[bold bright_green]🚀 Building your project with expert AI team...[/]\n")
+        console.print("[bold bright_green]Building your project...[/]\n")
 
         project_name = self._extract_project_name(task) or "MyProject"
 
-        # Use the Expert Agent Orchestrator for multi-agent collaboration
-        console.print("[dim]📋 Phase 1: Expert Planning...[/]")
-        console.print("[dim]🏗️  Phase 2: Architecture Design...[/]")
-        console.print("[dim]⚡ Phase 3: Expert Execution...[/]")
-        console.print("[dim]🔬 Phase 4: Code Review...[/]")
-        console.print("[dim]✨ Phase 5: Continuous Improvement...[/]")
-        console.print("[dim]🧠 Phase 6: Auto-Learning & Evolution...[/]\n")
-
-        with console.status("[bold cyan]Expert team building your project...[/]", spinner="dots"):
-            # Use ExpertAgentOrchestrator for full multi-agent workflow
+        with console.status("[bold cyan]Creating project...[/]", spinner="dots"):
             orchestrator = ExpertAgentOrchestrator(project_name=project_name)
             result = orchestrator.execute_expert_workflow(task)
 
         if project_name:
             self.current_project = project_name
 
-        # Format result for display
         if isinstance(result, dict):
-            output = f"\n[bold green]✅ PROJECT COMPLETE: {project_name}[/]\n\n"
-            if 'summary' in result:
+            output = f"\n[bold green]Project Complete:[/] {project_name}\n\n"
+            if result.get("summary"):
                 output += f"[dim]{result['summary']}[/]\n"
-            if 'files_created' in result:
-                output += f"\n[bold]📁 Files Created:[/]\n"
-                for f in result['files_created'][:10]:
-                    output += f"  [cyan]• {f}[/]\n"
-            if 'project_path' in result:
-                output += f"\n[dim]Location: {result['project_path']}[/]\n"
+            if result.get("files_created"):
+                output += f"\n[bold]Files:[/]\n"
+                for f in result["files_created"][:10]:
+                    output += f"  [cyan]•[/] {f}\n"
             return output
         return str(result)
 
-    def handle_debug(self, task):
-        """Handle debugging — conversational approach"""
-        return self.chat_with_ai(
-            f"I need help debugging something: {task}\n\n"
-            "Please help me identify and fix the issue. "
-            "Ask me for more details if you need them (like error messages, code snippets, etc)."
-        )
-
-    def handle_review(self, task):
-        """Handle code review — conversational"""
-        return self.chat_with_ai(
-            f"I'd like you to review: {task}\n\n"
-            "Please analyze it and give constructive feedback. "
-            "If I haven't shared the code yet, ask me to share it."
-        )
-
-    def handle_refactor(self, task):
-        """Handle refactoring — conversational"""
-        return self.chat_with_ai(
-            f"I want to improve/refactor: {task}\n\n"
-            "Please suggest improvements. If you need to see the code, ask me to share it."
-        )
-
-    def handle_run(self, task):
-        """Handle execution tasks"""
-        # If it's a clear command, confirm before running
-        if "run " in task.lower():
-            cmd_part = task.lower().split("run ", 1)[1].strip()
-
-            console.print(
-                f"\n[yellow]⚡ You want me to run:[/] [bold cyan]{cmd_part}[/]"
-            )
-
-            if Confirm.ask("[dim]Should I go ahead?[/dim]", default=True):
-                with console.status("[bold cyan]Running command...[/]", spinner="dots"):
-                    executor = AdvancedExecutor()
-                    result = executor.run_command(cmd_part, timeout=60)
-
-                if result["success"]:
-                    output = result.get("stdout", "") or result.get("stderr", "")
-                    return f"[green]✓ Command executed successfully![/]\n\n```\n{output[:1000]}\n```"
-                else:
-                    return f"[red]✗ Error:[/] {result.get('stderr', 'Unknown error')}"
-            else:
-                return "[dim]Okay, cancelled.[/dim]"
-
-        # Otherwise, chat about it
-        return self.chat_with_ai(
-            f"Help me execute this: {task}\n\n"
-            "What commands should I run? Walk me through it step by step."
-        )
-
     def handle_design(self, task):
-        """Handle UI/UX design requests"""
+        """Handle UI/UX design"""
         console.print()
-        console.print("[bold bright_purple]🎨 Launching UI/UX Design Expert...[/]\n")
+        console.print("[bold bright_purple]Creating design...[/]\n")
 
-        project_name = self._extract_project_name(task) or self.current_project or "New Design Project"
-        
-        tool_id = str(uuid.uuid4())
-        self._log_event("assistant", {"message": {"content": [{"type": "tool_use", "id": tool_id, "name": "Task", "input": {"description": f"Design {project_name}"}}]}})
+        project_name = self._extract_project_name(task) or self.current_project or "Design"
 
-        with console.status(f"[bold purple]Designing {project_name}...[/]", spinner="dots"):
+        with console.status("[bold purple]Designing...[/]", spinner="dots"):
             orchestrator = create_design_orchestrator()
             result = orchestrator.create_complete_design(
                 project_name=project_name,
@@ -544,169 +429,393 @@ Be conversational and friendly. End with "Once you tell me, I'll start building 
 
         html_file = f"{project_name.replace(' ', '_').lower()}.html"
         with open(html_file, "w") as f:
-            f.write(result['exports']['html']['content'])
+            f.write(result["exports"]["html"]["content"])
 
-        # Create CSS file next to it for the user
         css_file = f"{project_name.replace(' ', '_').lower()}.css"
         with open(css_file, "w") as f:
-            f.write(result['exports']['css']['content'])
-            
-        self._log_event("user", {"message": {"content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "done"}]}})
+            f.write(result["exports"]["css"]["content"])
 
-        return f"[green]✓ Design generated successfully![/]\n\n" \
-               f"🎨 A visually stunning, production-ready, watermark-free design was created.\n" \
-               f"📁 Saved HTML to: `[cyan]{html_file}[/cyan]`\n" \
-               f"📁 Saved CSS to: `[cyan]{css_file}[/cyan]`\n\n" \
-               f"You can view this file in your browser!"
+        return f"[green]Design saved:[/]\n  [cyan]{html_file}[/]\n  [cyan]{css_file}[/]"
+
+    def handle_debug(self, task):
+        """Handle debugging"""
+        return self.chat(f"Help debug this: {task}. Ask for error messages or code if not provided.")
+
+    def handle_review(self, task):
+        """Handle code review"""
+        return self.chat(f"Review this: {task}. Ask for code if not provided.")
+
+    def handle_refactor(self, task):
+        """Handle refactoring"""
+        return self.chat(f"Refactor this: {task}. Ask for code if not provided.")
+
+    def handle_run(self, task):
+        """Handle command execution"""
+        cmd = task
+        if "run " in task.lower():
+            cmd = task.lower().split("run ", 1)[1].strip()
+
+        console.print(f"\n[dim]Running:[/] [cyan]{cmd}[/]")
+
+        if Confirm.ask("[dim]Proceed?[/]", default=True):
+            executor = AdvancedExecutor()
+            result = executor.run_command(cmd, timeout=60)
+
+            if result["success"]:
+                output = result.get("stdout", "") or result.get("stderr", "")
+                return f"[green]Done![/]\n\n```\n{output[:1000]}\n```"
+            return f"[red]Error:[/] {result.get('stderr', 'Unknown')}"
+        return "[dim]Cancelled.[/dim]"
 
     def handle_improve(self, task):
         """Handle project improvement"""
-        project_name = self._extract_project_name(task)
-
-        if not project_name:
-            project_name = self.current_project
-
-        if not project_name:
-            return self.chat_with_ai(
-                f"The user wants to improve something: {task}\n\n"
-                "Ask which project they want to improve. List any projects you know about."
-            )
-
-        # Ask about improvement details first
-        return self.chat_with_ai(
-            f"The user wants to improve project '{project_name}': {task}\n\n"
-            "Discuss what improvements they want, confirm understanding, "
-            "and then describe what changes you'd make."
-        )
-
-    def handle_confirm(self):
-        """Handle user confirmation for pending task"""
-        if not self.pending_task:
-            return self.chat_with_ai("I'm ready to help! What would you like me to do?")
-
-        task_type = self.pending_task["type"]
-        original_request = self.pending_task["original_request"]
-        self.pending_task = None  # Clear pending task
-
-        if task_type == "create":
-            # Get the full context from conversation history
-            recent_context = "\n".join(
-                f"{msg['role']}: {msg['content']}"
-                for msg in self.conversation_history[-6:]
-            )
-            full_task = f"{original_request}\n\nAdditional context from our conversation:\n{recent_context}"
-            return self.handle_create_confirmed(full_task)
-
-        return "Okay, proceeding!"
+        return self.chat(f"Improve: {task}. Ask which project and what to improve.")
 
     # ──────────────────────────────────────────────────────────
-    # MAIN TASK ROUTER
+    # FILE TOOLS
     # ──────────────────────────────────────────────────────────
-    def run_task(self, user_input):
-        """Route user input to appropriate handler"""
-        intent = self.detect_intent(user_input)
+    def handle_read(self, filepath):
+        """Read a file"""
+        executor = AdvancedExecutor()
+        result = executor.read_file(filepath)
 
-        handlers = {
-            "chat": self.handle_chat,
-            "ask": self.handle_ask,
-            "create": self.handle_create,
-            "debug": self.handle_debug,
-            "review": self.handle_review,
-            "refactor": self.handle_refactor,
-            "run": self.handle_run,
-            "improve": self.handle_improve,
-            "design": self.handle_design,
-        }
+        if result["success"]:
+            content = result["content"]
+            lines = result.get("lines", "?")
+            header = f"[dim]📄 {filepath} ({lines} lines)[/dim]\n\n"
+            if len(content) > 3000:
+                return f"{header}```\n{content[:3000]}\n...[/]```"
+            return f"{header}```\n{content}\n```"
+        return f"[red]Error:[/] {result.get('error', 'File not found')}"
 
-        if intent == "confirm":
-            return self.handle_confirm()
+    def handle_shell(self, command):
+        """Run a shell command"""
+        executor = AdvancedExecutor()
+        result = executor.run_command(command, timeout=60)
 
-        handler = handlers.get(intent, self.handle_chat)
-        return handler(user_input)
+        if result["success"]:
+            output = result.get("stdout", "") or result.get("stderr", "")
+            return f"[green]Done![/]\n\n```\n{output[:1000]}\n```"
+        return f"[red]Error:[/] {result.get('stderr', 'Unknown')}"
+
+    def handle_ls(self, directory="."):
+        """List directory"""
+        executor = AdvancedExecutor()
+        result = executor.list_files(directory)
+
+        if result["success"]:
+            files = result.get("files", [])
+            if not files:
+                return f"[dim]Empty directory[/]"
+
+            output = f"[bold]📁 {directory}[/] ({len(files)} items)\n\n"
+            for f in files[:30]:
+                path = f if isinstance(f, str) else f.get("path", str(f))
+                output += f"  [cyan]•[/] {path}\n"
+            return output
+        return f"[red]Error:[/] {result.get('error', 'Directory not found')}"
+
+    def handle_glob(self, pattern):
+        """Glob files"""
+        from glob import glob
+        files = glob(pattern, recursive=True)[:20]
+        if files:
+            output = f"[bold]Files matching:[/] {pattern}\n\n"
+            for f in files:
+                output += f"  [cyan]•[/] {f}\n"
+            return output
+        return f"[dim]No files found[/]"
+
+    def handle_grep(self, pattern, path="."):
+        """Grep files"""
+        executor = AdvancedExecutor()
+        result = executor.search_code(pattern, path)
+
+        if result.get("success") and result.get("matches"):
+            output = f"[bold]Matches for:[/] {pattern}\n\n"
+            for match in result["matches"][:20]:
+                output += f"  [cyan]{match}[/]\n"
+            return output
+        return f"[dim]No matches found[/]"
+
+    def handle_write(self, filepath, content):
+        """Write a file"""
+        try:
+            os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else ".", exist_ok=True)
+            with open(filepath, "w") as f:
+                f.write(content)
+            return f"[green]Saved:[/] {filepath}"
+        except Exception as e:
+            return f"[red]Error:[/] {str(e)}"
 
     # ──────────────────────────────────────────────────────────
     # UTILITIES
     # ──────────────────────────────────────────────────────────
     def _extract_project_name(self, task):
-        """Extract project name from task"""
         words = task.lower().split()
         for word in ["called", "named", "name"]:
             if word in words:
                 idx = words.index(word)
                 if idx + 1 < len(words):
-                    name = words[idx + 1].strip(".,!?\"'")
-                    if name and len(name) > 1:
-                        return name
+                    return words[idx + 1].strip(".,!?\"'")
         return None
 
-    def handle_shell(self, command):
-        tool_id = str(uuid.uuid4())
-        self._log_event("assistant", {"message": {"content": [{"type": "tool_use", "id": tool_id, "name": "Bash", "input": {"command": command}}]}})
-        
-        executor = AdvancedExecutor()
-        result = executor.run_command(command, timeout=60)
+    # ──────────────────────────────────────────────────────────
+    # SLASH COMMANDS
+    # ──────────────────────────────────────────────────────────
+    def process_command(self, user_input):
+        """Process slash commands"""
+        parts = user_input.split(maxsplit=3)
+        cmd = parts[0].lower()
+        arg = parts[1] if len(parts) > 1 else ""
+        arg2 = parts[2] if len(parts) > 2 else ""
 
-        self._log_event("user", {"message": {"content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "done"}]}})
+        # /help - Show help
+        if cmd == "/help":
+            self.show_help()
+            return None
 
-        if result["success"]:
-            output = result.get("stdout", "") or result.get("stderr", "")
-            return f"[green]✓ Done![/]\n\n```\n{output[:1000]}\n```"
+        # /clear - Clear screen
+        elif cmd == "/clear":
+            console.clear()
+            self.print_banner()
+            return None
+
+        # /model - Show/set model
+        elif cmd == "/model":
+            if arg:
+                self.model = arg
+                self.settings.set_model(arg)
+                console.print(f"\n[green]Model set to:[/] {arg}\n")
+            else:
+                console.print(f"\n[bold]Current model:[/] {self.model}\n")
+                console.print("[dim]Available models:[/]")
+                for provider, info in FREE_CODING_MODELS.items():
+                    for m in info["models"]:
+                        console.print(f"  [cyan]{m['id']}[/]")
+            return None
+
+        # /models - List models
+        elif cmd == "/models":
+            self.show_models()
+            return None
+
+        # /setkey - Set API key
+        elif cmd == "/setkey" and arg:
+            os.environ["OPENROUTER_API_KEY"] = arg
+            self.api_key = arg
+            console.print("\n[green]API key set![/]\n")
+            return None
+
+        # /shell - Run command
+        elif cmd == "/shell" and arg:
+            return self.handle_shell(arg)
+
+        # /read - Read file
+        elif cmd == "/read" and arg:
+            return self.handle_read(arg)
+
+        # /ls - List directory
+        elif cmd == "/ls":
+            return self.handle_ls(arg or ".")
+
+        # /glob - Glob files
+        elif cmd == "/glob" and arg:
+            return self.handle_glob(arg)
+
+        # /grep - Search
+        elif cmd == "/grep":
+            if arg and arg2:
+                return self.handle_grep(arg, arg2)
+            elif arg:
+                return self.handle_grep(arg)
+            return "[yellow]Usage: /grep <pattern> [path][/]"
+
+        # /write - Write file
+        elif cmd == "/write":
+            if " " in user_input[7:]:
+                filepath, content = user_input[7:].split(" ", 1)
+                return self.handle_write(filepath, content)
+            return "[yellow]Usage: /write <filepath> <content>[/]"
+
+        # /projects - List projects
+        elif cmd == "/projects":
+            return self.show_projects()
+
+        # /use - Use project
+        elif cmd == "/use" and arg:
+            self.current_project = arg
+            console.print(f"\n[green]Project:[/] {arg}\n")
+            return None
+
+        # /sessions - List sessions
+        elif cmd == "/sessions":
+            return self.show_sessions()
+
+        # /resume - Resume session
+        elif cmd == "/resume" and arg:
+            return f"[dim]Use: bharat -r {arg} \"task\"[/]"
+
+        # /plan - Toggle plan mode
+        elif cmd == "/plan":
+            self.plan_mode = not self.plan_mode
+            status = "[green]enabled[/]" if self.plan_mode else "[dim]disabled[/]"
+            console.print(f"\n[bold]Plan mode:[/] {status}\n")
+            return None
+
+        # /cost - Show usage (placeholder)
+        elif cmd == "/cost":
+            return f"[dim]Messages: {len(self.conversation_history)}[/]"
+
+        # /memory - Edit memory
+        elif cmd == "/memory":
+            return self.handle_memory()
+
+        # /exit or /quit
+        elif cmd in ["/exit", "/quit"]:
+            return "exit"
+
         else:
-            return f"[red]✗ Error:[/] {result.get('stderr', 'Unknown error')}"
+            return f"[yellow]Unknown command:[/] {cmd}\n[dim]Type /help for available commands[/]"
 
-    def handle_read(self, filepath):
-        tool_id = str(uuid.uuid4())
-        self._log_event("assistant", {"message": {"content": [{"type": "tool_use", "id": tool_id, "name": "Read", "input": {"file_path": filepath}}]}})
-        
-        executor = AdvancedExecutor()
-        result = executor.read_file(filepath)
-        
-        self._log_event("user", {"message": {"content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "done"}]}})
+    def show_help(self):
+        """Show help menu"""
+        table = Table(title="Commands", border_style="bright_black", width=70)
+        table.add_column("Command", style="cyan", width=20)
+        table.add_column("Description", width=48)
 
-        if result["success"]:
-            content = result["content"]
-            lines = result.get("lines", "?")
-            size = result.get("size", "?")
-            header = f"[dim]📄 {filepath} ({lines} lines, {size} bytes)[/dim]\n\n"
-            if len(content) > 3000:
-                return f"{header}```\n{content[:3000]}\n... (truncated)\n```"
-            return f"{header}```\n{content}\n```"
-        return f"[red]✗[/] {result.get('error', 'File not found')}"
+        commands = [
+            ("/help", "Show this help"),
+            ("/clear", "Clear the screen"),
+            ("/model [name]", "Show or set model"),
+            ("/models", "List available models"),
+            ("/setkey <key>", "Set OpenRouter API key"),
+            ("/shell <cmd>", "Run shell command"),
+            ("/read <file>", "Read a file"),
+            ("/ls [dir]", "List directory"),
+            ("/glob <pattern>", "Find files by pattern"),
+            ("/grep <pattern>", "Search in files"),
+            ("/write <file> <content>", "Write file"),
+            ("/projects", "List saved projects"),
+            ("/use <name>", "Set active project"),
+            ("/sessions", "List sessions"),
+            ("/plan", "Toggle plan mode"),
+            ("/cost", "Show message count"),
+            ("/memory", "Edit project memory"),
+            ("/exit", "Exit BharatCode"),
+        ]
 
-    def handle_ls(self, directory="."):
-        tool_id = str(uuid.uuid4())
-        self._log_event("assistant", {"message": {"content": [{"type": "tool_use", "id": tool_id, "name": "Glob", "input": {}}]}})
-        
-        executor = AdvancedExecutor()
-        result = executor.list_files(directory)
+        for cmd, desc in commands:
+            table.add_row(cmd, desc)
 
-        self._log_event("user", {"message": {"content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "done"}]}})
+        console.print(table)
 
-        if result["success"]:
-            files = result.get("files", [])
-            if not files:
-                return f"[dim]📁 {directory} — empty[/dim]"
+    def show_models(self):
+        """Show available models"""
+        table = Table(title="Available Models", border_style="bright_black")
+        table.add_column("Provider", style="cyan")
+        table.add_column("Model", width=40)
 
-            output = f"[bold]📁 {directory}[/] ({len(files)} files)\n\n"
-            for f in files[:30]:
-                path = f if isinstance(f, str) else f.get("path", str(f))
-                output += f"  [cyan]•[/] {path}\n"
-            if len(files) > 30:
-                output += f"\n  [dim]... and {len(files) - 30} more[/dim]"
-            return output
-        return f"[red]✗[/] {result.get('error', 'Directory not found')}"
+        for provider, info in FREE_CODING_MODELS.items():
+            for m in info["models"]:
+                table.add_row(provider.upper(), f"{m['name']} ({m['id']})")
+
+        console.print(table)
+
+    def show_projects(self):
+        """Show saved projects"""
+        memory = get_memory()
+        projects = memory.list_projects()
+
+        if projects:
+            console.print("\n[bold]📁 Your Projects:[/]\n")
+            for p in projects[:10]:
+                name = p.get("name", "unnamed")
+                request = p.get("request", "")[:50]
+                console.print(f"  [cyan]•[/] [bold]{name}[/] — {request}...")
+        else:
+            console.print("\n[dim]No projects yet[/]\n")
+
+    def show_sessions(self):
+        """Show sessions"""
+        sessions = self.session_manager.list_sessions()
+
+        if sessions:
+            console.print("\n[bold]Sessions:[/]\n")
+            for s in sessions[:10]:
+                console.print(f"  [cyan]•[/] {s['id']} ({s['message_count']} messages)")
+        else:
+            console.print("\n[dim]No sessions[/]\n")
+
+    def handle_memory(self):
+        """Handle memory file"""
+        if BHARAT_MEMORY_FILE.exists():
+            console.print(f"\n[dim]Memory file:[/] {BHARAT_MEMORY_FILE}\n")
+            with open(BHARAT_MEMORY_FILE) as f:
+                console.print(f.read())
+        else:
+            console.print("\n[dim]No memory file. Create one at:[/]")
+            console.print(f"  {BHARAT_MEMORY_FILE}\n")
 
     # ──────────────────────────────────────────────────────────
-    # MAIN LOOP
+    # BANNER
     # ──────────────────────────────────────────────────────────
-    def run(self):
+    def print_banner(self):
+        banner = """
+[bold bright_yellow]╔══════════════════════════════════════════════════════════════╗[/]
+[bold bright_yellow]║[/]  [bold bright_cyan]██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ████████╗[/]          [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]  [bold bright_cyan]██╔══██╗██║  ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝[/]          [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]  [bold bright_cyan]██████╔╝███████║███████║██████╔╝███████║   ██║[/]             [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]  [bold bright_cyan]██╔══██╗██╔══██║██╔══██║██╔══██╗██╔══██║   ██║[/]             [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]  [bold bright_cyan]██████╔╝██║  ██║██║  ██║██║  ██║██║  ██║   ██║[/]             [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]  [bold bright_cyan]╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝[/]             [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]                                                              [bold bright_yellow]║[/]
+[bold bright_yellow]║[/]  [bold white]C O D E[/]   [dim]•[/dim]   [italic bright_green]Your AI Coding Companion[/]                    [bold bright_yellow]║[/]
+[bold bright_yellow]╚══════════════════════════════════════════════════════════════╝[/]
+        """
+        console.print(banner)
+
+        # Status panel
+        status = Table(box=None, padding=(0, 1))
+        status.add_column()
+        status.add_column()
+        status.add_row("[dim]Status[/]", "[green]●[/] Online" if self.api_key else "[yellow]⚠[/] No API key")
+        status.add_row("[dim]Model[/]", f"[cyan]{self.model}[/]")
+        status.add_row("[dim]Session[/]", f"[cyan]{self.session_id}[/]")
+
+        console.print(Panel(status, border_style="green" if self.api_key else "yellow", width=50))
+
+    def print_welcome(self):
+        console.print()
+        console.print("[bold bright_cyan]Hey! I'm BharatCode — your AI coding companion.[/]\n")
+        console.print("  [dim]•[/] Type naturally to chat or ask questions")
+        console.print("  [dim]•[/] Use [bold cyan]/help[/] for commands")
+        console.print("  [dim]•[/] Examples:")
+        console.print("    [cyan]•[/] [dim]\"create a portfolio website\"[/]")
+        console.print("    [cyan]•[/] [dim]\"fix this bug in my code\"[/]")
+        console.print("    [cyan]•[/] [dim]\"explain how async works in Python\"[/]\n")
+
+    # ──────────────────────────────────────────────────────────
+    # MAIN RUN LOOP
+    # ──────────────────────────────────────────────────────────
+    def run(self, initial_prompt=None):
         self.print_banner()
         self.print_welcome()
 
+        # If initial prompt provided, run it and exit (like Claude -p)
+        if initial_prompt:
+            result = self.run_task(initial_prompt)
+            if result:
+                console.print(Markdown(result))
+            return
+
+        # Interactive mode
         while True:
             try:
-                # Clean, friendly prompt
-                prompt_text = "[bold bright_cyan]you ›[/] " if not self.current_project else f"[bold bright_cyan]you[/] [dim]({self.current_project})[/] [bold bright_cyan]›[/] "
+                prompt_text = "[bold bright_cyan]you ›[/]"
+                if self.current_project:
+                    prompt_text = f"[bold bright_cyan]you[/] [dim]({self.current_project})[/] [bold bright_cyan]›[/]"
+
                 user_input = console.input(prompt_text).strip()
             except (EOFError, KeyboardInterrupt):
                 console.print("\n[bold bright_yellow]👋 See you later![/]\n")
@@ -714,146 +823,117 @@ Be conversational and friendly. End with "Once you tell me, I'll start building 
 
             if not user_input:
                 continue
-                
-            self._log_event("user", {"message": {"content": user_input}})
 
             # Exit
             if user_input.lower() in ["exit", "quit", "q"]:
-                console.print(
-                    "\n[bold bright_yellow]👋 Thanks for coding with me! See you next time![/]\n"
-                )
+                console.print("\n[bold bright_yellow]👋 Thanks for coding with me![/]\n")
                 break
 
-            # Slash commands
+            # Process command
             if user_input.startswith("/"):
-                self._handle_slash_command(user_input)
-                self._log_turn_end()
+                result = self.process_command(user_input)
+                if result == "exit":
+                    break
+                elif result:
+                    console.print(Panel(result, border_style="bright_black"))
                 continue
 
-            # Route to task handler
-            try:
-                result = self.run_task(user_input)
-                self._log_turn_end()
+            # Run task
+            result = self.run_task(user_input)
 
-                if result:
-                    console.print()
-                    # Try to render as markdown for better formatting
-                    try:
-                        if any(marker in result for marker in ["```", "**", "# ", "- ", "1. "]):
-                            console.print(
-                                Panel(
-                                    Markdown(result),
-                                    border_style="bright_black",
-                                    padding=(1, 2),
-                                )
-                            )
-                        else:
-                            console.print(
-                                Panel(
-                                    result,
-                                    border_style="bright_black",
-                                    padding=(1, 2),
-                                )
-                            )
-                    except Exception:
-                        console.print(result)
-                    console.print()
-                else:
-                    console.print(
-                        "\n[dim]Hmm, I didn't get a response. Try again or rephrase?[/]\n"
-                    )
-
-            except Exception as e:
-                console.print(
-                    f"\n[red]Oops! Something went wrong:[/] [dim]{str(e)}[/]\n"
-                    "[dim]Try again or type /help for options.[/]\n"
-                )
-
-    def _handle_slash_command(self, user_input):
-        """Process slash commands"""
-        parts = user_input.split(maxsplit=2)
-        cmd = parts[0].lower()
-        arg = parts[1] if len(parts) > 1 else ""
-
-        if cmd == "/setkey" and arg:
-            self.api_key = arg
-            os.environ["OPENROUTER_API_KEY"] = arg
-            console.print("\n[green]✓[/] API key set! You're all set to go. 🎉\n")
-
-        elif cmd == "/models":
-            self.print_models()
-
-        elif cmd == "/set" and arg:
-            self.model = arg
-            os.environ["DEFAULT_MODEL"] = arg
-            console.print(f"\n[green]✓[/] Switched to model: [bold cyan]{arg}[/]\n")
-
-        elif cmd == "/shell" and arg:
-            console.print(f"\n[dim]Running: {arg}[/dim]")
-            result = self.handle_shell(arg)
-            console.print(Panel(result, border_style="bright_black"))
-
-        elif cmd == "/read":
-            if not arg:
-                console.print("\n[yellow]Usage:[/] /read <filepath>\n")
-            else:
-                result = self.handle_read(arg)
-                console.print(Panel(result, border_style="bright_black"))
-
-        elif cmd == "/ls":
-            result = self.handle_ls(arg or ".")
-            console.print(Panel(result, border_style="bright_black"))
-
-        elif cmd == "/projects":
-            projects = self.memory.list_projects()
-            if projects:
-                console.print("\n[bold]📁 Your Projects:[/]\n")
-                for p in projects:
-                    name = p.get("name", "unnamed")
-                    request = p.get("request", "")[:50]
-                    folder = p.get("folder", "")
-                    console.print(f"  [cyan]•[/] [bold]{name}[/] — {request}...")
-                    console.print(f"    [dim]{folder}[/]")
+            if result:
                 console.print()
-            else:
-                console.print(
-                    "\n[dim]No projects yet. Ask me to create one![/]\n"
-                )
+                try:
+                    console.print(Panel(Markdown(result), border_style="bright_black", padding=(1, 2)))
+                except Exception:
+                    console.print(Panel(result, border_style="bright_black", padding=(1, 2)))
 
-        elif cmd == "/design":
-            task = user_input[7:].strip()
-            if not task:
-                console.print("\n[yellow]Usage:[/] /design <description of what you want>\n[dim]Example: /design a dark mode SaaS dashboard[/dim]\n")
-            else:
-                result = self.handle_design(task)
-                console.print(Panel(result, border_style="bright_black"))
+    def run_task(self, user_input):
+        """Route user input to appropriate handler"""
+        intent = self.detect_intent(user_input)
 
-        elif cmd == "/use" and arg:
-            self.current_project = arg.strip()
-            console.print(
-                f"\n[green]✓[/] Working on project: [bold]{self.current_project}[/]\n"
-            )
+        handlers = {
+            "chat": lambda: self.chat(user_input),
+            "ask": lambda: self.chat(user_input),
+            "create": lambda: self.handle_create(user_input),
+            "design": lambda: self.handle_design(user_input),
+            "debug": lambda: self.handle_debug(user_input),
+            "review": lambda: self.handle_review(user_input),
+            "refactor": lambda: self.handle_refactor(user_input),
+            "run": lambda: self.handle_run(user_input),
+            "improve": lambda: self.handle_improve(user_input),
+        }
 
-        elif cmd == "/clear":
-            console.clear()
-            self.print_banner()
+        # Handle confirmation
+        if intent == "confirm" and self.pending_task:
+            return self.handle_create(user_input)
 
-        elif cmd in ["/help", "/h"]:
-            self.print_help()
-
-        else:
-            console.print(
-                f"\n[yellow]Unknown command:[/] {cmd}\n"
-                "[dim]Type /help to see available commands.[/]\n"
-            )
+        handler = handlers.get(intent, handlers["chat"])
+        return handler()
 
 
+# ──────────────────────────────────────────────────────────────
+# CLI ENTRY POINT
+# ──────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="BharatCode Dev")
-    parser.add_argument("--session-id", type=str, help="Session ID for pixel-agents JSONL tracking")
-    args, unknown = parser.parse_known_args()
-    
-    app = BharatCode(session_id=args.session_id)
+    parser = argparse.ArgumentParser(
+        description="BharatCode - Your AI Coding Companion",
+        prog="bharat"
+    )
+
+    # Positional argument for initial prompt
+    parser.add_argument("prompt", nargs="?", help="Initial prompt to run")
+
+    # Flags
+    parser.add_argument("-p", "--print", action="store_true",
+                        help="Print mode: run prompt and exit")
+    parser.add_argument("-c", "--continue", dest="continue_session", action="store_true",
+                        help="Continue most recent session")
+    parser.add_argument("-r", "--resume", dest="resume", metavar="SESSION",
+                        help="Resume a specific session")
+    parser.add_argument("-m", "--model", dest="model", metavar="MODEL",
+                        help="Set model to use")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Enable verbose output")
+    parser.add_argument("--version", action="store_true",
+                        help="Show version")
+    parser.add_argument("--session", dest="session", metavar="NAME",
+                        help="Create named session")
+
+    args = parser.parse_args()
+
+    # Version
+    if args.version:
+        console.print("[bold]BharatCode[/] version 1.0.0")
+        return
+
+    # Create app
+    app = BharatCode(
+        session_name=args.session,
+        continue_session=args.continue_session,
+        resume_session=args.resume
+    )
+
+    # Override model if specified
+    if args.model:
+        app.model = args.model
+        app.settings.set_model(args.model)
+
+    # Run with initial prompt (print mode)
+    if args.prompt and args.prompt.strip():
+        result = app.run_task(args.prompt.strip())
+        if result:
+            console.print(Markdown(result))
+        return
+
+    # Run with prompt as argument (same as -p)
+    if args.prompt:
+        result = app.run_task(args.prompt)
+        if result:
+            console.print(Markdown(result))
+        return
+
+    # Interactive mode
     app.run()
 
 
